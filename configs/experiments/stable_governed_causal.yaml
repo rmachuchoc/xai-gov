@@ -1,0 +1,24 @@
+# RQ3 needs a network that is functioning. In the high-volatility arms service
+# collapses to 0.06, inventory sits at zero everywhere, and no admissible lever
+# changes the reorder decision — so interventional effects are all zero, the
+# fidelity audit returns 'not_verifiable', and the descriptor is never
+# informative. The recourse channel correctly refuses to fire: there is no
+# repair to find in a collapsed network.
+#
+# That is a finding, and it also means RQ3 cannot be answered there. A stable
+# regime keeps states near the reorder boundary, which is where a lever can
+# change a decision and where recourse therefore exists.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/demand_stable.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/causal.yaml
+
+governance:
+  recourse_loss_relief: 0.4
+
+experiment:
+  name: stable_governed_causal
+  periods: 60
+  master_seed: 20260703

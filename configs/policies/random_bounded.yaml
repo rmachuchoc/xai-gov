@@ -1,0 +1,6 @@
+# The falsification arm: any KPI that fails to separate a real policy from
+# this one is a KPI that measures nothing.
+policy:
+  name: random_bounded
+  params:
+    hold_probability: 0.5

@@ -1,0 +1,14 @@
+# The control arm: escalate above a fixed belief in disruption. This is what a
+# fixed escalation threshold amounts to in practice, and its defect is that it
+# spends human attention identically whether or not doing so helps.
+oversight:
+  policy: threshold
+  params:
+    threshold: 0.6
+  supervisor:
+    attention_budget: 12.0
+    fatigue: 0.15
+    accuracy:
+      nominal: 0.55
+      drift: 0.70
+      disruption: 0.88

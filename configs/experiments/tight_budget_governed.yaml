@@ -1,0 +1,13 @@
+# Governance under scarce oversight capacity, for the shadow price.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_tight_budget.yaml
+
+experiment:
+  name: tight_budget_governed
+  # 60 periods so each node contributes enough post-warmup observations for
+  # the guarantees layer to be measurable rather than merely present.
+  periods: 60
+  master_seed: 20260703

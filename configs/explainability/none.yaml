@@ -1,0 +1,4 @@
+# The control arm: no explanation offered and none claimed. The XAI indicator
+# layer reports itself unavailable rather than writing a fabricated zero.
+explainability:
+  descriptor: none

@@ -1,0 +1,12 @@
+# Transfer test: an unannounced regime change the policy never calibrated
+# on, plus a supply halt after it.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/structural_change.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/no_governance.yaml
+
+experiment:
+  name: structural_change_dro
+  periods: 40
+  master_seed: 20260703

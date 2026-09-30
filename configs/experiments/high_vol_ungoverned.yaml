@@ -1,0 +1,13 @@
+# High volatility on a three-echelon network with the opaque robust policy
+# and no governance. The arm the governed condition of stage 3 is compared
+# against, under the same seed.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/no_governance.yaml
+
+experiment:
+  name: high_vol_ungoverned
+  periods: 40
+  master_seed: 20260703

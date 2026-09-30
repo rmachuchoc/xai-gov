@@ -1,0 +1,18 @@
+# The degenerate case: one warehouse fed by an uncapacitated source.
+# Used for validation against the classical reorder-point literature.
+network:
+  name: single_echelon
+  node_defaults:
+    holding_cost: 1.0
+    backlog_cost: 5.0
+    order_cost: 0.5
+  nodes:
+    - node_id: wh-01
+      echelon: 0
+      supplier_id: __external__
+      initial_inventory: 60.0
+      capacity: 200.0
+      reorder_point: 30.0
+      order_quantity: 40.0
+      lead_time_mean: 2.0
+      lead_time_dispersion: 0.0

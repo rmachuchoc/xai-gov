@@ -1,0 +1,4 @@
+# The control arm of every experiment: proposals execute unchanged.
+governance:
+  architecture: no_governance
+  autonomy_regime: H3

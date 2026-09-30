@@ -1,0 +1,29 @@
+# Adaptive conformal inference plus conformal risk control: the threshold is
+# calibrated against a safety loss rather than against coverage.
+conformal:
+  score: studentized_residual
+  warmup: 15
+  forecaster:
+    alpha: 0.3
+    beta: 0.1
+  level:
+    scheme: aci
+    params:
+      target_level: 0.1
+      gamma: 0.02
+  calibrator:
+    name: weighted
+    params:
+      window: 200
+      decay: 0.97
+  martingale:
+    enabled: true
+    params:
+      delta: 0.01
+  risk_control:
+    enabled: true
+    params:
+      tolerance: 0.1
+      delta: 0.1
+      window: 200
+      min_samples: 20

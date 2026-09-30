@@ -1,0 +1,11 @@
+# Same agent, scarce oversight capacity. This is the cell where the shadow
+# price kappa* becomes informative: the budget binds, so the multiplier rises
+# and interventions must clear a higher bar.
+_include_:
+  - configs/governance/cpomdp_h2.yaml
+
+governance:
+  budget:
+    allowance: 4.0
+    discount: 0.95
+    dual_rate: 0.1

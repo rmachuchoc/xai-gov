@@ -1,0 +1,9 @@
+# The control arm for RQ8. Monitors still watch and record, so the two arms
+# are observed identically: the price of verified safety is the difference in
+# performance, and it cannot be computed if only one arm is instrumented.
+_include_:
+  - configs/verification/shield_on.yaml
+
+verification:
+  shield: false
+  monitors: true

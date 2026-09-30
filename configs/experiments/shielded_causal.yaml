@@ -1,0 +1,28 @@
+# The RQ3 treatment. Two conditions must hold at once for a recourse mechanism
+# to be measurable, and only the shielded regime satisfies both:
+#
+#   - the network must be functioning, so that states sit near the reorder
+#     boundary where a lever can change a decision. High volatility without a
+#     shield collapses service to 0.06 and inventory sits at zero everywhere,
+#     so no admissible lever moves the decision and no recourse exists.
+#   - interventions must actually occur, so that a mechanism which reduces them
+#     has something to reduce. The stable regime has no disruptions, the
+#     detector never flags, the belief never crosses the threshold, and the
+#     intervention rate is zero in every arm.
+#
+# The shielded arms hold both: service 0.67 and an intervention rate near 0.65.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/causal.yaml
+  - configs/verification/shield_on.yaml
+
+governance:
+  recourse_loss_relief: 0.4
+
+experiment:
+  name: shielded_causal
+  periods: 60
+  master_seed: 20260703

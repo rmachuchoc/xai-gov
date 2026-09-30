@@ -1,0 +1,17 @@
+# The conformal-score ablation. Identical to high_vol_shielded except that the
+# studentized score divides by a frozen reference scale rather than a
+# co-adapting one, so whatever separates the two arms is attributable to
+# self-normalization alone.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/causal.yaml
+  - configs/verification/shield_on.yaml
+  - configs/conformal/aci_reference_scale.yaml
+
+experiment:
+  name: high_vol_reference_scale
+  periods: 60
+  master_seed: 20260703

@@ -1,0 +1,36 @@
+# Retail -> distribution -> plant. The topology the protocol treats as the
+# reference case; the bullwhip KPI is only meaningful from two echelons up.
+network:
+  name: three_echelon
+  node_defaults:
+    holding_cost: 1.0
+    backlog_cost: 5.0
+    order_cost: 0.5
+    lead_time_dispersion: 0.25
+  nodes:
+    - node_id: retail-01
+      echelon: 0
+      supplier_id: dc-01
+      initial_inventory: 45.0
+      capacity: 120.0
+      reorder_point: 25.0
+      order_quantity: 35.0
+      lead_time_mean: 2.0
+    - node_id: dc-01
+      echelon: 1
+      supplier_id: plant-01
+      initial_inventory: 90.0
+      capacity: 300.0
+      reorder_point: 60.0
+      order_quantity: 90.0
+      lead_time_mean: 3.0
+      holding_cost: 0.6
+    - node_id: plant-01
+      echelon: 2
+      supplier_id: __external__
+      initial_inventory: 180.0
+      capacity: 600.0
+      reorder_point: 120.0
+      order_quantity: 200.0
+      lead_time_mean: 4.0
+      holding_cost: 0.3

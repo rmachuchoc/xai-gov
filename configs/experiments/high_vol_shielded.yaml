@@ -1,0 +1,15 @@
+# Governance with the verified shield. Paired with high_vol_governed_causal:
+# same network, demand, seed, policy and descriptor, so the difference between
+# them is the price of verified safety (RQ8).
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/causal.yaml
+  - configs/verification/shield_on.yaml
+
+experiment:
+  name: high_vol_shielded
+  periods: 60
+  master_seed: 20260703

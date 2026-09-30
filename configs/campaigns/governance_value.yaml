@@ -1,0 +1,179 @@
+# The primary campaign: does governance create net value, and where?
+#
+# Every hypothesis names a treatment, a control, an indicator and a predicted
+# direction before any run executes. The plan is sealed by hash; an analysis
+# whose plan does not match its seal is reported as exploratory, not
+# confirmatory.
+campaign: governance_value
+alpha: 0.05
+minimum_replicates: 30
+
+arms:
+  ungoverned: configs/experiments/high_vol_ungoverned.yaml
+  governed: configs/experiments/high_vol_governed_h2.yaml
+  governed_causal: configs/experiments/high_vol_governed_causal.yaml
+  governed_posthoc: configs/experiments/high_vol_governed_posthoc.yaml
+  governed_split: configs/experiments/high_vol_governed_split.yaml
+  reference_scale: configs/experiments/high_vol_reference_scale.yaml
+  long_memory: configs/experiments/high_vol_long_memory.yaml
+  contaminated: configs/experiments/high_vol_contaminated.yaml
+  five_ungoverned: configs/experiments/five_ungoverned.yaml
+  five_governed: configs/experiments/five_governed.yaml
+  five_shielded: configs/experiments/five_shielded.yaml
+  shielded_causal: configs/experiments/shielded_causal.yaml
+  shielded_posthoc: configs/experiments/shielded_posthoc.yaml
+  shielded: configs/experiments/high_vol_shielded.yaml
+  unshielded: configs/experiments/high_vol_unshielded.yaml
+  delegated: configs/experiments/high_vol_delegated.yaml
+
+hypotheses:
+  - id: RQ4
+    question: >-
+      Does governance sustain service level under high volatility relative to
+      the ungoverned arm?
+    indicator: operational.service_level
+    treatment: governed
+    control: ungoverned
+    direction: greater
+    predicted_effect: 0.05
+    rationale: >-
+      The governance advantage is predicted to be increasing in shift severity
+      and null or negative in the nominal distribution.
+
+  - id: RQ6
+    question: >-
+      Does the adaptive conformal scheme hold coverage where the classical one
+      does not?
+    indicator: guarantees.abs_coverage_error
+    treatment: reference_scale
+    control: governed_split
+    direction: less
+    predicted_effect: 0.10
+    rationale: >-
+      Coverage error is predicted to stay within 0.03 of nominal for the
+      adaptive scheme under severe shift. Tested on the absolute indicator, not
+      the signed one: a 'less' test on the signed error rewards undershooting
+      the nominal level, which is worse coverage rather than better, and the
+      two criteria point opposite ways whenever both arms fall on the same side
+      of nominal. The treatment is the reference-scale arm rather than the
+      co-adapting one, because the first campaign found the co-adapting score
+      normalizing the shift away: comparing against it measures
+      self-normalization rather than adaptivity.
+
+  - id: RQ6b
+    question: >-
+      Does freezing the dispersion estimate restore the detector's coverage?
+    indicator: guarantees.abs_coverage_error
+    treatment: reference_scale
+    control: shielded
+    direction: less
+    predicted_effect: 0.08
+    rationale: >-
+      Isolates self-normalization. The two arms differ only in whether the
+      studentized score divides by a frozen reference scale or by one that
+      co-adapts with the series, so any difference in realized coverage is
+      attributable to that choice alone. Added after the first campaign
+      measured a coverage error of -0.158 against a nominal 0.1, which is a
+      detector normalizing away the shift rather than an anomalous environment.
+
+  - id: RQ6c
+    question: >-
+      Is the detector under-flagging because its calibration set is too small
+      to support the requested level?
+    indicator: guarantees.abs_coverage_error
+    treatment: long_memory
+    control: shielded
+    direction: less
+    predicted_effect: 0.03
+    rationale: >-
+      The conformal quantile at level e needs the score at index
+      ceil((n+1)(1-e)), so at most n minus that many calibration points can
+      ever exceed the threshold: that fraction is the highest flag rate the
+      window can produce. A recency-weighted window of 200 at decay 0.97 has a
+      Kish effective sample near 65 and therefore caps flagging around 7.7 per
+      cent against a 10 per cent target, while the long-memory window reaches
+      about 9.6 per cent. The predicted effect is small on purpose: this ceiling
+      is a genuine constraint and it does not on its own account for a realized
+      rate near zero, so a null here leaves the under-flagging unexplained
+      rather than refuting the mechanism. Added after RQ6b refuted the
+      self-normalization account, which moved the coverage error by 0.0005.
+
+  - id: RQ6d
+    question: >-
+      Is the detector under-flagging because its calibration set contains the
+      forecaster's own warm-up scores?
+    indicator: guarantees.abs_coverage_error
+    treatment: shielded
+    control: contaminated
+    direction: less
+    predicted_effect: 0.12
+    rationale: >-
+      A learned forecaster begins with a scale invented from its first
+      observation, so its early residuals are large and its scores shrink as it
+      converges. A threshold drawn from a set containing those scores is a
+      quantile of the model's learning curve, and a later score cannot reach it.
+      The detector payload of the first campaign showed the signature directly:
+      zero flags in 45 scored periods with 18 of 60 calibration points sitting
+      above the threshold, so the threshold was not pinned to the top and the
+      scores themselves had fallen. Tested last of the three conformal
+      hypotheses because it is the one the payload supports; RQ6b and RQ6c moved
+      the coverage error by 0.0005 and 0.0000 respectively. The effect is
+      conditional on the horizon: over a long stationary series the
+      contamination dilutes away, so this arm measures it at the campaign's own
+      60 periods, where twelve burn-in scores are a quarter of the calibration
+      set.
+
+  - id: RQ9
+    question: >-
+      Does the collapse of oversight without corrective capacity persist on a
+      longer chain?
+    indicator: operational.service_level
+    treatment: five_shielded
+    control: five_governed
+    direction: greater
+    predicted_effect: 0.50
+    rationale: >-
+      The headline effect was measured on a three-echelon network, which leaves
+      open whether it is a property of governance-as-refusal or of a chain with
+      two upstream echelons to starve. Five echelons has four, so the mechanism
+      predicts an effect at least as large. Stated as a directional prediction
+      because it can fail informatively: if the collapse does not appear on the
+      longer chain, the finding was topological rather than mechanical and the
+      manuscript must say so. Added by recorded amendment after coauthor review.
+
+  - id: RQ3
+    question: >-
+      Does the causal descriptor reduce intervention without losing service?
+    indicator: governance.intervention_rate
+    treatment: shielded_causal
+    control: shielded_posthoc
+    direction: less
+    predicted_effect: 0.20
+    rationale: >-
+      A descriptor that identifies actionable levers should let the agent
+      intervene less often for the same operational outcome. Tested in the
+      stable regime rather than under high volatility: in a collapsed network
+      no admissible lever changes the reorder decision, so no recourse exists
+      to find and the descriptor cannot help by construction.
+
+  - id: RQ8
+    question: What does the verified shield cost in operational return?
+    indicator: operational.service_level
+    treatment: shielded
+    control: unshielded
+    direction: different
+    predicted_effect: 0.08
+    rationale: >-
+      The price of verified safety is predicted not to exceed 8 percent of
+      cumulative return in nominal scenarios.
+
+exclusion_criteria:
+  - runs whose decision log fails hash-chain verification
+  - runs whose conformal detector reports saturation
+  - runs that aborted before completing their declared horizon
+
+notes: >-
+  Arms share seeds by replicate, so every comparison is paired on the same
+  demand path and disruption schedule. RQ3 is tested in the stable regime for a
+  structural reason recorded with the hypothesis; RQ4, RQ6 and RQ8 are tested
+  under high volatility, which is where the governance question has content.

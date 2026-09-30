@@ -1,0 +1,8 @@
+# The oversight control arm: the same supervisor, escalated to by a fixed
+# threshold instead of a learned policy. Isolates what the learning adds.
+_include_:
+  - configs/experiments/high_vol_delegated.yaml
+  - configs/oversight/threshold.yaml
+
+experiment:
+  name: high_vol_threshold_oversight

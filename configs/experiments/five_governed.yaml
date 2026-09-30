@@ -1,0 +1,12 @@
+# Topology invariance, arm 2 of 3: mediation without corrective capacity, where
+# every intervention resolves to holding.
+_include_:
+  - configs/network/five_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+
+experiment:
+  name: five_governed
+  periods: 60
+  master_seed: 20260703

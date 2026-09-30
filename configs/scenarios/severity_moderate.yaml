@@ -1,0 +1,10 @@
+# Severity level 2 of 4. See severity_mild.yaml for the design rationale.
+demand:
+  regime: high_volatility
+  mean: 12.0
+  dispersion: 0.2
+  volatility_multiplier: 3.0
+  cycle: 5
+data_quality:
+  delay: 0
+disruptions: []

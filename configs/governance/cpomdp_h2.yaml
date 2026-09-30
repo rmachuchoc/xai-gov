@@ -1,0 +1,28 @@
+# The governed arm: belief-based mediation under a budget constraint, with the
+# intervention threshold derived from the declared economics rather than set
+# by hand. H2 grants the right to act with conditional escalation.
+_include_:
+  - configs/conformal/aci_adaptive.yaml
+
+governance:
+  architecture: cpomdp
+  autonomy_regime: H2
+  economics:
+    intervention_cost: 1.0
+    disruption_loss: 10.0
+    discount: 0.95
+  budget:
+    allowance: 20.0
+    discount: 0.95
+    dual_rate: 0.05
+  regime_model:
+    persistence: 0.9
+    emission:
+      nominal: 0.05
+      drift: 0.35
+      disruption: 0.80
+    change_likelihood_ratio: 8.0
+  levels:
+    escalation_belief: 0.6
+    safe_mode_belief: 0.9
+    quantity_bound: 60.0

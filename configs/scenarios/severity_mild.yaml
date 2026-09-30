@@ -1,0 +1,20 @@
+# Severity level 1 of 4.
+#
+# A graded family, so the question "what disruption severity justifies the cost
+# of substitution" has a curve behind it rather than a single scenario. Theorem
+# 2 predicts the sign: the optimal intervention threshold decreases in shock
+# severity, so substitution should become worthwhile past some severity and the
+# crossing should move monotonically. A non-monotone curve means the simulator
+# violates an assumption of the theorem, which is a finding either way.
+#
+# Only the volatility multiplier varies across the family. Holding the mean,
+# dispersion and cycle fixed is what makes severity the attributable factor.
+demand:
+  regime: high_volatility
+  mean: 12.0
+  dispersion: 0.2
+  volatility_multiplier: 1.5
+  cycle: 5
+data_quality:
+  delay: 0
+disruptions: []

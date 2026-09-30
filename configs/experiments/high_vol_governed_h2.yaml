@@ -1,0 +1,15 @@
+# The paired governed arm of high_vol_ungoverned: same network, same demand,
+# same seed, same policy. Only the governance architecture differs, which is
+# what makes the pair a valid comparison for RGD and TVC.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+
+experiment:
+  name: high_vol_governed_h2
+  # 60 periods so each node contributes enough post-warmup observations for
+  # the guarantees layer to be measurable rather than merely present.
+  periods: 60
+  master_seed: 20260703

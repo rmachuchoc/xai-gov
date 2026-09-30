@@ -1,0 +1,12 @@
+# Reference run: single warehouse, stable demand, classical heuristic,
+# no governance. Everything else is measured against this.
+_include_:
+  - configs/network/single_echelon.yaml
+  - configs/scenarios/demand_stable.yaml
+  - configs/policies/heuristic.yaml
+  - configs/governance/no_governance.yaml
+
+experiment:
+  name: pilot
+  periods: 30
+  master_seed: 20260703

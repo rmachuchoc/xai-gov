@@ -1,0 +1,18 @@
+# The RQ3 control: identical, with the correlational descriptor. The recourse
+# channel is present in both arms, so what separates them is whether the
+# descriptor can supply an identifiable, affordable repair for it to act on.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/post_hoc.yaml
+  - configs/verification/shield_on.yaml
+
+governance:
+  recourse_loss_relief: 0.4
+
+experiment:
+  name: shielded_posthoc
+  periods: 60
+  master_seed: 20260703

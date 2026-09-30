@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xai-gov"
+version = "0.2.0"
+description = "Agent-governed digital twin with causal XAI, adaptive conformal inference and verifiable algorithmic governance"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+  { name = "Ruben Machucho Cadena" },
+  { name = "David Josue Ortiz Gonzalez" },
+]
+keywords = [
+  "algorithmic-governance", "digital-twin", "conformal-prediction",
+  "explainable-ai", "pomdp", "supply-chain",
+]
+dependencies = [
+  "PyYAML>=6.0.1",
+  "numpy>=1.26",
+  "pandas>=2.2.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+  "pytest-cov>=5.0.0",
+  "ruff>=0.5.0",
+  "mypy>=1.10.0",
+]
+# Installed in later stages, kept declared so the environment is auditable.
+sim = ["simpy>=4.1", "mesa>=2.3"]
+ml = ["scikit-learn>=1.5", "torch>=2.3"]
+xai = ["shap>=0.45", "lime>=0.2.0.1", "dice-ml>=0.11"]
+causal = ["dowhy>=0.11", "econml>=0.15"]
+conformal = ["mapie>=0.8"]
+bayes = ["pymc>=5.15", "arviz>=0.18", "sbi>=0.22"]
+analysis = ["scipy>=1.13", "statsmodels>=0.14", "SALib>=1.5"]
+track = ["mlflow>=2.14", "dvc>=3.51"]
+
+[project.scripts]
+xai-gov = "xai_gov.cli.main:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-q --strict-markers"
+testpaths = ["tests"]
+markers = [
+  "slow: long-running experiment or campaign test",
+  "integration: crosses more than one module boundary",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Pre-remaster modules kept for reference under legacy/. They are replaced
+# module by module in stages 2-5; until then they are not held to the
+# current standard and are not importable as xai_gov.*
+extend-exclude = ["legacy", "notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# RUF001-003 flag Unicode characters that could be confused with ASCII. In a
+# codebase whose docstrings carry the protocol's own notation — ε, γ, λ, α, σ,
+# the minus sign, ≤, ⟨…⟩ — every match is a false positive, and "fixing" them
+# would silently turn published formulas into different formulas. The rule is
+# right for user-facing strings and wrong for mathematics.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+files = ["src"]
+exclude = ["legacy/"]

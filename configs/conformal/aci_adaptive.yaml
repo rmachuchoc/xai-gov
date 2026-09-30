@@ -1,0 +1,33 @@
+# Adaptive conformal inference with recency-weighted calibration and a
+# change martingale. The scheme the protocol's Theorem 1 concerns.
+conformal:
+  score: studentized_residual
+  # Enough calibration points that the finite-sample quantile is not simply
+  # the maximum observed score, which would leave the detector unable to fire.
+  warmup: 15
+  # Periods whose scores train the forecaster and stay out of calibration. A
+  # threshold drawn from a set that includes the forecaster's own warm-up is a
+  # quantile of its learning curve, and the first campaign flagged zero times in
+  # 45 periods because of it.
+  burn_in: 12
+  forecaster:
+    alpha: 0.3
+    beta: 0.1
+  level:
+    scheme: aci
+    params:
+      target_level: 0.1
+      gamma: 0.05
+      min_level: 0.005
+      max_level: 0.5
+  calibrator:
+    name: weighted
+    params:
+      window: 200
+      decay: 0.97
+  martingale:
+    enabled: true
+    params:
+      delta: 0.01
+  risk_control:
+    enabled: false

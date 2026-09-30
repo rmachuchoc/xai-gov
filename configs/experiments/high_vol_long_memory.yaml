@@ -1,0 +1,15 @@
+# Identical to high_vol_shielded except for the calibration window's effective
+# sample size, so whatever separates the two arms is attributable to that.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/causal.yaml
+  - configs/verification/shield_on.yaml
+  - configs/conformal/aci_long_memory.yaml
+
+experiment:
+  name: high_vol_long_memory
+  periods: 60
+  master_seed: 20260703

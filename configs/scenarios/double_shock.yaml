@@ -1,0 +1,20 @@
+# Surge then collapse, with a capacity loss straddling the first shock.
+demand:
+  regime: double_shock
+  mean: 12.0
+  dispersion: 0.2
+  first_shock_period: 10
+  second_shock_period: 20
+  first_multiplier: 2.0
+  second_multiplier: 0.5
+data_quality:
+  delay: 0
+disruptions:
+  - kind: capacity_loss
+    start: 10
+    duration: 4
+    magnitude: 0.4
+  - kind: lead_time_spike
+    start: 12
+    duration: 3
+    magnitude: 1.0

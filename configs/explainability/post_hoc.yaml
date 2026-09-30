@@ -1,0 +1,11 @@
+# Correlational attribution, in the spirit of an off-the-shelf SHAP/LIME
+# explainer applied to tabular operating state: importance proportional to a
+# feature's standardized deviation from its reference level.
+#
+# Implemented in good faith, not as a straw man, and audited by exactly the
+# same fidelity check as the causal arm. If it ranks the levers correctly it
+# passes, and the protocol's claim has to be earned.
+explainability:
+  descriptor: post_hoc
+  params:
+    fidelity_floor: 0.5

@@ -1,0 +1,22 @@
+# The effective-sample-size ablation.
+#
+# The conformal quantile at level e needs the score at index ceil((n+1)(1-e)).
+# With decay 0.97 the Kish effective sample size is about 33, so level 0.1 asks
+# for index 31 of 33 -- within one or two of the maximum observed score. A
+# threshold pinned to the top of its own calibration set is exceeded by almost
+# nothing, which is under-flagging for a reason that has nothing to do with the
+# score or the level controller.
+#
+# The classical split arm carries half the coverage error on an unweighted
+# window of 100, which is consistent with the same mechanism at three times the
+# sample. This arm raises the effective sample without giving up recency
+# weighting, so the two explanations separate.
+_include_:
+  - configs/conformal/aci_adaptive.yaml
+
+conformal:
+  calibrator:
+    name: weighted
+    params:
+      window: 400
+      decay: 0.999

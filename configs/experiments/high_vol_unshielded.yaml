@@ -1,0 +1,14 @@
+# The RQ8 control arm: identical, with the shield disabled and monitors still
+# recording. Whatever separates the two runs is attributable to the shield.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/causal.yaml
+  - configs/verification/shield_off.yaml
+
+experiment:
+  name: high_vol_unshielded
+  periods: 60
+  master_seed: 20260703

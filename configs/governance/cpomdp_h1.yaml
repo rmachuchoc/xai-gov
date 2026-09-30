@@ -1,0 +1,11 @@
+# H1: the system acts only within an agreed range, with an ex ante veto
+# outside it. Higher oversight cost, no post-hoc surprises.
+_include_:
+  - configs/governance/cpomdp_h2.yaml
+
+governance:
+  autonomy_regime: H1
+  levels:
+    escalation_belief: 0.6
+    safe_mode_belief: 0.9
+    quantity_bound: 40.0

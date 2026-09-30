@@ -1,0 +1,12 @@
+# The control arm for the burn-in finding: calibration admits the forecaster's
+# own warm-up scores, which is what every arm of the first campaign did.
+#
+# Kept because the finding needs a comparison. A detector that fires zero times
+# in 45 periods looks like an anomalous environment or a mis-set level; only the
+# paired contrast against a burn-in arm shows that the threshold was a quantile
+# of the model's learning curve.
+_include_:
+  - configs/conformal/aci_adaptive.yaml
+
+conformal:
+  burn_in: 0

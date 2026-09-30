@@ -1,0 +1,11 @@
+# Stationary in mean, volatile in scale: the case a detector calibrated on
+# a quiet window handles worst, since no mean-shift test sees anything.
+demand:
+  regime: high_volatility
+  mean: 12.0
+  dispersion: 0.2
+  volatility_multiplier: 3.0
+  cycle: 5
+data_quality:
+  delay: 0
+disruptions: []

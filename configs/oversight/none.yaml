@@ -1,0 +1,3 @@
+# Full automation: nothing is escalated to a person.
+oversight:
+  policy: none

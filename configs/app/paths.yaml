@@ -1,0 +1,8 @@
+# Runtime locations. Relative paths resolve against the project root;
+# absolute paths are honored as given, so a campaign can write to a
+# scratch volume without touching the code.
+paths:
+  outputs: outputs
+  data: data
+  logs: logs
+  specs: specs

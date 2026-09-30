@@ -1,0 +1,16 @@
+# One unannounced regime change: the transfer condition of the protocol.
+# Nothing signals it in advance and the new process is not a rescaling.
+demand:
+  regime: structural_change
+  mean: 12.0
+  dispersion: 0.15
+  change_period: 15
+  new_mean_multiplier: 1.6
+  new_dispersion: 0.45
+data_quality:
+  delay: 0
+disruptions:
+  - kind: supply_halt
+    start: 18
+    duration: 2
+    magnitude: 1.0

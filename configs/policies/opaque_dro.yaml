@@ -1,0 +1,6 @@
+policy:
+  name: opaque_dro
+  params:
+    service_quantile: 0.95
+    ambiguity_radius: 0.25
+    window: 8

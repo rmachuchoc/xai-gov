@@ -1,0 +1,21 @@
+# The control arm for RQ6: a fixed level over an unweighted window. Valid
+# under exchangeability, which is exactly what a disruption destroys. Kept so
+# the loss of coverage can be measured rather than asserted.
+conformal:
+  score: studentized_residual
+  warmup: 10
+  forecaster:
+    alpha: 0.3
+    beta: 0.1
+  level:
+    scheme: fixed
+    params:
+      target_level: 0.1
+  calibrator:
+    name: split
+    params:
+      window: 100
+  martingale:
+    enabled: false
+  risk_control:
+    enabled: false

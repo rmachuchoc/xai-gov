@@ -1,0 +1,21 @@
+# A two-arm, few-replicate campaign for checking the pipeline end to end.
+# Deliberately under-powered: it exists to prove the machinery runs, and the
+# report says so rather than presenting its numbers as findings.
+campaign: smoke
+alpha: 0.05
+minimum_replicates: 3
+
+arms:
+  ungoverned: configs/experiments/high_vol_ungoverned.yaml
+  governed: configs/experiments/high_vol_governed_h2.yaml
+
+hypotheses:
+  - id: SMOKE
+    question: Does the governed arm differ from the ungoverned one at all?
+    indicator: operational.service_level
+    treatment: governed
+    control: ungoverned
+    direction: different
+    predicted_effect: 0.01
+
+notes: An under-powered pipeline check, not a study.

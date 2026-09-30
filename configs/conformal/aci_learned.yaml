@@ -1,0 +1,15 @@
+# The same adaptive conformal scheme over a *learned* forecaster. The point of
+# conformal prediction is that its coverage guarantee holds whatever the
+# predictor is; demonstrating it only for a hand-written exponential level
+# makes the guarantee look like a property of that forecaster. This arm is the
+# model-agnostic demonstration.
+_include_:
+  - configs/conformal/aci_adaptive.yaml
+
+conformal:
+  forecaster:
+    kind: ridge
+    lags: 4
+    ridge: 1.0
+    refit_every: 8
+    minimum_history: 12

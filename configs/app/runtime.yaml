@@ -1,0 +1,10 @@
+runtime:
+  # strict: refuse to continue on a contract violation rather than
+  # degrading silently. Never disable this for a reported result.
+  strict: true
+  # A run whose decision log does not verify is not a result.
+  fail_on_unverified_log: true
+  max_workers: 1
+  float_precision: 10
+  write_events_csv: true
+  write_decision_log: true

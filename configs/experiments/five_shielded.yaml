@@ -1,0 +1,14 @@
+# Topology invariance, arm 3 of 3: the same mediation with the synthesized
+# shield, which may substitute an admissible action rather than only block.
+_include_:
+  - configs/network/five_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/causal.yaml
+  - configs/verification/shield_on.yaml
+
+experiment:
+  name: five_shielded
+  periods: 60
+  master_seed: 20260703

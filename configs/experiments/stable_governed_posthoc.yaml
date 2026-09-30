@@ -1,0 +1,17 @@
+# The RQ3 control: same scenario, correlational descriptor, recourse channel
+# present but with no identifiable recourse to feed it. Whatever separates this
+# from stable_governed_causal is attributable to the causal descriptor alone.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/demand_stable.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/post_hoc.yaml
+
+governance:
+  recourse_loss_relief: 0.4
+
+experiment:
+  name: stable_governed_posthoc
+  periods: 60
+  master_seed: 20260703

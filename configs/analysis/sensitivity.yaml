@@ -1,0 +1,18 @@
+# The declared economics whose influence is measured. A conclusion driven
+# overwhelmingly by one of these is a finding about that parameter, not about
+# governance, and the Sobol indices are what tell the two apart.
+sensitivity:
+  base_samples: 64
+  parameters:
+    - name: intervention_cost
+      low: 0.25
+      high: 4.0
+    - name: disruption_loss
+      low: 5.0
+      high: 40.0
+    - name: allowance
+      low: 4.0
+      high: 40.0
+    - name: escalation_belief
+      low: 0.4
+      high: 0.8

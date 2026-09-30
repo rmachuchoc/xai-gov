@@ -1,0 +1,13 @@
+# Learned delegation: defer when the supervisor is estimated to do better by
+# more than the attention costs. Both accuracies are estimated online from
+# realized outcomes, starting from equal priors so neither actor is assumed
+# superior by construction.
+_include_:
+  - configs/oversight/threshold.yaml
+
+oversight:
+  policy: learned
+  params:
+    prior_strength: 4.0
+    attention_weight: 0.3
+    min_gain: 0.05

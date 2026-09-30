@@ -1,0 +1,22 @@
+# Adaptive conformal inference over a *frozen* dispersion estimate.
+#
+# The first campaign found the adaptive detector under-flagging badly: realized
+# coverage error -0.158 against a nominal level of 0.1, and worse than the
+# classical split scheme it was supposed to beat. The mechanism is the
+# studentized score dividing by a scale that co-adapts with the series: when
+# volatility rises, numerator and denominator rise together, the score stays
+# flat, and the detector normalizes away the very shift it exists to find.
+#
+# Freezing the scale after a reference window restores the property. A later
+# change in dispersion now registers as nonconformity, which is what a
+# distribution-shift detector is for.
+_include_:
+  - configs/conformal/aci_adaptive.yaml
+
+conformal:
+  forecaster:
+    kind: ewma
+    alpha: 0.3
+    beta: 0.1
+    scale_mode: reference
+    reference_after: 15

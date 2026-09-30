@@ -1,0 +1,14 @@
+# Unannounced regime change under governance. The transfer condition: the
+# change martingale has no advance warning and must earn its detection.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/structural_change.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+
+experiment:
+  name: structural_change_governed
+  # 60 periods so each node contributes enough post-warmup observations for
+  # the guarantees layer to be measurable rather than merely present.
+  periods: 60
+  master_seed: 20260703

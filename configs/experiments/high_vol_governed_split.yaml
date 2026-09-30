@@ -1,0 +1,16 @@
+# The detector ablation: identical to high_vol_governed_h2 except that the
+# conformal layer is the classical split scheme. Isolates how much of the
+# governed arm's behaviour comes from adaptivity rather than from governance.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/conformal/split_classical.yaml
+
+experiment:
+  name: high_vol_governed_split
+  # 60 periods so each node contributes enough post-warmup observations for
+  # the guarantees layer to be measurable rather than merely present.
+  periods: 60
+  master_seed: 20260703

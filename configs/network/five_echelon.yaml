@@ -1,0 +1,59 @@
+# A five-echelon chain, to test whether the collapse of oversight without
+# corrective capacity is a property of the mechanism or of a network with two
+# upstream echelons to starve. This one has four.
+#
+# supplier_id points upstream, and the most upstream node draws from
+# __external__ — the same convention as three_echelon.yaml, so the two
+# topologies differ only in length.
+network:
+  name: five_echelon
+  node_defaults:
+    holding_cost: 1.0
+    backlog_cost: 5.0
+    order_cost: 0.5
+    lead_time_dispersion: 0.25
+  nodes:
+    - node_id: retail-01
+      echelon: 0
+      supplier_id: regional-01
+      initial_inventory: 45.0
+      capacity: 120.0
+      reorder_point: 25.0
+      order_quantity: 35.0
+      lead_time_mean: 2.0
+    - node_id: regional-01
+      echelon: 1
+      supplier_id: dc-01
+      initial_inventory: 70.0
+      capacity: 200.0
+      reorder_point: 45.0
+      order_quantity: 65.0
+      lead_time_mean: 2.0
+      holding_cost: 0.8
+    - node_id: dc-01
+      echelon: 2
+      supplier_id: national-01
+      initial_inventory: 90.0
+      capacity: 300.0
+      reorder_point: 60.0
+      order_quantity: 90.0
+      lead_time_mean: 3.0
+      holding_cost: 0.6
+    - node_id: national-01
+      echelon: 3
+      supplier_id: plant-01
+      initial_inventory: 130.0
+      capacity: 450.0
+      reorder_point: 90.0
+      order_quantity: 140.0
+      lead_time_mean: 3.0
+      holding_cost: 0.45
+    - node_id: plant-01
+      echelon: 4
+      supplier_id: __external__
+      initial_inventory: 180.0
+      capacity: 600.0
+      reorder_point: 120.0
+      order_quantity: 200.0
+      lead_time_mean: 4.0
+      holding_cost: 0.3

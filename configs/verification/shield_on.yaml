@@ -1,0 +1,32 @@
+# Safety properties and the shield synthesized from them. Adding a property
+# here changes the shield automatically: the admissible action envelope is
+# derived from the specification, never written by hand.
+verification:
+  shield: true
+  monitors: true
+  horizon_lookahead: 1
+  abstraction:
+    inventory_bands: [0.0, 5.0, 20.0, 50.0, 100.0]
+    backlog_bands: [0.0, 10.0, 50.0, 100.0]
+  specification:
+    properties:
+      - id: SAFE-1
+        operator: persistent
+        predicate: backlog_critical
+        bound: 0.05
+        horizon: 3
+        description: >-
+          backlog does not stay above its critical level for three consecutive
+          periods with probability above 0.05
+      - id: SAFE-2
+        operator: bounded_eventually
+        predicate: inventory_critical
+        bound: 0.20
+        horizon: 5
+        description: inventory does not fall to its critical level within five periods
+      - id: SAFE-3
+        operator: persistent
+        predicate: stockout
+        bound: 0.02
+        horizon: 2
+        description: a stockout does not persist across two consecutive periods

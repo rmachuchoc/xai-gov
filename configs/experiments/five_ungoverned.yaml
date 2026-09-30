@@ -1,0 +1,19 @@
+# Topology invariance, arm 1 of 3. The headline collapse was measured on a
+# three-echelon network, which leaves open whether it is a property of
+# governance-as-refusal or of a chain with two upstream echelons to starve.
+# Five echelons has four, so the mechanism predicts a collapse at least as
+# large -- and if none appears, the finding was topological and the paper has
+# to say so.
+_include_:
+  - configs/network/five_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+
+governance:
+  architecture: no_governance
+  autonomy_regime: H3
+
+experiment:
+  name: five_ungoverned
+  periods: 60
+  master_seed: 20260703

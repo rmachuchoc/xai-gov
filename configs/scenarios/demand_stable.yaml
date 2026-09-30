@@ -1,0 +1,8 @@
+# In-distribution reference. Exchangeable over the horizon by construction.
+demand:
+  regime: stable
+  mean: 12.0
+  dispersion: 0.15
+data_quality:
+  delay: 0
+disruptions: []
