@@ -90,11 +90,9 @@ def test_an_effect_between_the_thresholds_is_reported_as_such() -> None:
 
 
 def test_a_two_sided_claim_gets_no_reverse_test() -> None:
-    """Its differences are magnitudes, so there is no opposite direction to bet
-    on and inventing one would be reporting a test that was never run."""
-    evidence = directional_evidence(
-        [abs(value) for value in rising(0.5)], two_sided=True
-    )
+    """Both directions are already pooled into the single two-sided e-value,
+    so a separate reverse value would be reporting the same bet twice."""
+    evidence = directional_evidence(rising(0.5), two_sided=True)
     assert evidence.reverse is None
     assert evidence.reverse_null is None
     assert evidence.refuted is False
@@ -107,10 +105,42 @@ def test_invalid_arguments_are_refused() -> None:
         directional_evidence([])
 
 
-def test_the_two_directions_use_the_same_scale() -> None:
-    """A reverse test on a different normalization would not be comparable to
-    the forward one, and the pair is meant to be read together."""
+def test_the_two_sided_value_is_the_mean_of_both_directions() -> None:
+    """e = (e_up + e_down) / 2, each run on the same scale. Any convex
+    combination of valid e-values is valid, so no correction is needed."""
     values = rising(0.4)
-    forward_only = directional_evidence(values, two_sided=True).forward
-    both = directional_evidence(values)
-    assert both.forward == pytest.approx(forward_only)
+    one_sided = directional_evidence(values)
+    two_sided = directional_evidence(values, two_sided=True)
+    assert one_sided.reverse is not None
+    assert two_sided.forward == pytest.approx(
+        0.5 * (one_sided.forward + one_sided.reverse)
+    )
+
+
+def test_a_two_sided_test_does_not_find_an_effect_in_noise() -> None:
+    """The defect fixed in v1.0.1. Betting on |d| accumulates evidence under the
+    null because E|d| > 0 whenever d has spread; the pooled construction does
+    not. Checked over many null streams rather than one, because a single
+    stream can cross by chance at any valid test's nominal rate."""
+    import random
+
+    rng = random.Random(11)
+    crossings_pooled = crossings_magnitude = 0
+    for _ in range(200):
+        noise = [rng.gauss(0.0, 1.0) for _ in range(60)]
+        pooled = directional_evidence(noise, alpha=0.05, two_sided=True)
+        magnitude = directional_evidence(
+            [abs(v) for v in noise], alpha=0.05, two_sided=False
+        )
+        crossings_pooled += pooled.forward >= 20.0
+        crossings_magnitude += magnitude.forward >= 20.0
+    # Ville's inequality bounds the pooled rate at alpha.
+    assert crossings_pooled / 200 <= 0.05
+    # The old construction rejects a true null almost always.
+    assert crossings_magnitude / 200 > 0.5
+
+
+def test_a_two_sided_claim_still_detects_a_real_effect() -> None:
+    """Pooling halves the value at most, so a strong effect stays decisive."""
+    evidence = directional_evidence(rising(0.6), hypotheses=8, two_sided=True)
+    assert evidence.supported is True

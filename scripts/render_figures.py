@@ -175,7 +175,8 @@ def load_calibration(directory: Path) -> dict[str, Any]:
     if not directory.exists():
         return {}
     merged: dict[str, Any] = {}
-    for path in (directory / n for n in ("calibration_weekly_both.json", "calibration_weekly_ar1.json")):
+    reports = ("calibration_weekly_both.json", "calibration_weekly_ar1.json")
+    for path in (directory / n for n in reports):
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):

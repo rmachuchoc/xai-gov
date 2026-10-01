@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xai-gov"
-version = "0.2.0"
+version = "1.0.1"
 description = "Agent-governed digital twin with causal XAI, adaptive conformal inference and verifiable algorithmic governance"
 readme = "README.md"
 requires-python = ">=3.12"

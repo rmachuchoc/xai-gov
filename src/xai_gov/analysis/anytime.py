@@ -256,8 +256,20 @@ def directional_evidence(
     e >= k/alpha, which is the e-value analogue of a Bonferroni correction and
     is valid because e-values admit the union bound directly.
 
-    A two-sided claim gets no reverse test: its differences are magnitudes, so
-    there is no opposite direction to bet on.
+    A two-sided claim is tested against the point null "mean difference is
+    zero" by averaging a bet on each direction: e = (e_up + e_down) / 2. Each
+    component is a valid e-value under that null, and so is any convex
+    combination of them, so the average is valid without correction.
+
+    An earlier version bet on the magnitudes |d| instead. That is not a valid
+    test: under the null E|d| > 0 whenever d has any spread, so the bet
+    accumulates evidence where there is no effect. On the campaign's data the
+    verdict did not change, but the construction was wrong in principle and the
+    reported value was inflated by a factor of about two.
+
+    ``differences`` must therefore be the signed values for a two-sided claim,
+    not their absolute values. There is still no separate reverse e-value: the
+    two directions are already pooled into the single two-sided one.
     """
     if hypotheses < 1:
         raise ValueError("hypotheses must be at least 1")
@@ -272,8 +284,12 @@ def directional_evidence(
             martingale.update(value)
         return martingale.value
 
-    forward = run(differences)
-    reverse = None if two_sided else run([-value for value in differences])
+    if two_sided:
+        forward = 0.5 * (run(differences) + run([-value for value in differences]))
+        reverse = None
+    else:
+        forward = run(differences)
+        reverse = run([-value for value in differences])
 
     return DirectionalEvidence(
         forward=forward,
@@ -284,7 +300,7 @@ def directional_evidence(
         forward_null=(
             f"no difference or an effect opposite to the prediction on {indicator}"
             if not two_sided
-            else f"no difference in magnitude on {indicator}"
+            else f"zero mean difference on {indicator}"
         ),
         reverse_null=(
             None if two_sided else f"no difference or the predicted effect on {indicator}"

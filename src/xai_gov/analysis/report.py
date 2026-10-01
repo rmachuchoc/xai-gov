@@ -73,8 +73,8 @@ def _orient(differences: list[float], direction: str) -> list[float]:
     """
     if direction == "less":
         return [-value for value in differences]
-    if direction == "different":
-        return [abs(value) for value in differences]
+    # A two-sided claim keeps its signs. The test pools a bet in each direction;
+    # betting on |d| instead is invalid because E|d| > 0 under the null.
     return list(differences)
 
 
