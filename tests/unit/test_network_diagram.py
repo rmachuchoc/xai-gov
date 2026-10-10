@@ -37,7 +37,7 @@ def test_both_flow_directions_are_drawn() -> None:
     svg = network_diagram(THREE)
     assert "arrow-fwd" in svg
     assert "arrow-back" in svg
-    assert "material" in svg and "orders" in svg
+    assert "Material" in svg and "Orders" in svg
 
 
 def test_the_parameters_are_annotated() -> None:
@@ -53,8 +53,8 @@ def test_the_system_boundary_is_shown() -> None:
     """Demand enters, disruptions enter: without both the diagram omits the
     inputs the reviewer asked to see."""
     svg = network_diagram(THREE)
-    assert "demand" in svg
-    assert "disruptions" in svg
+    assert "Demand" in svg
+    assert "Disruptions" in svg
 
 
 def test_an_empty_network_yields_nothing() -> None:

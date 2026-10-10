@@ -107,8 +107,8 @@ def network_diagram(
         return ""
 
     ordered = sorted(nodes, key=lambda n: int(n.get("echelon", 0)), reverse=True)
-    top = 52.0 if title else 34.0
-    cell_h, gap = 76.0, 26.0
+    top = 70.0 if title else 52.0
+    cell_h, gap = 76.0, 60.0
     left, right = 30.0, width - 30.0
     cell_w = (right - left - gap * (len(ordered) - 1)) / len(ordered)
     parts: list[str] = []
@@ -183,7 +183,7 @@ def network_diagram(
         f'marker-end="url(#arrow-fwd)"/>'
     )
     parts.append(
-        _text(demand_x, foot + 44, "demand", size=10.5, fill=ACCENT_DEEP, anchor="middle")
+        _text(demand_x, foot + 44, "Demand", size=10.5, fill=ACCENT_DEEP, anchor="middle")
     )
     parts.append(
         f'<path d="M{left + cell_w / 2:.1f} {top - 26:.1f} '
@@ -192,7 +192,7 @@ def network_diagram(
         f'marker-end="url(#arrow-fwd)"/>'
     )
     parts.append(
-        _text(left + cell_w / 2, top - 32, "disruptions", size=10, fill=MUTED, anchor="middle")
+        _text(left + cell_w / 2, top - 32, "Disruptions", size=10, fill=MUTED, anchor="middle")
     )
 
     legend = foot + 62
@@ -200,20 +200,13 @@ def network_diagram(
         f'<line x1="{left}" y1="{legend - 4:.1f}" x2="{left + 22}" '
         f'y2="{legend - 4:.1f}" stroke="{ACCENT}" stroke-width="1.5"/>'
     )
-    parts.append(_text(left + 28, legend, "material", size=10.5, fill=MUTED))
+    parts.append(_text(left + 28, legend, "Material", size=10.5, fill=MUTED))
     parts.append(
         f'<line x1="{left + 100}" y1="{legend - 4:.1f}" x2="{left + 122}" '
         f'y2="{legend - 4:.1f}" stroke="{AXIS}" stroke-width="1.2" '
         f'stroke-dasharray="3 2"/>'
     )
-    parts.append(_text(left + 128, legend, "orders", size=10.5, fill=MUTED))
-    parts.append(
-        _text(
-            left + 200, legend,
-            "inv initial inventory · cap capacity · s reorder point · L lead time",
-            size=10, fill=FAINT,
-        )
-    )
+    parts.append(_text(left + 128, legend, "Orders", size=10.5, fill=MUTED))
 
     defs = (
         '<defs>'
