@@ -43,6 +43,7 @@ def _build_shield(config: dict[str, Any]) -> Any:
         return Shield(
             specification=build_specification(config.get("specification")),
             horizon_lookahead=int(config.get("horizon_lookahead", 1)),
+            mode=str(config.get("shield_mode", "projection")),
         )
     except TypeError as error:
         raise ValueError(f"shield rejected its parameters: {error}") from error

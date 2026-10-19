@@ -1,0 +1,9 @@
+# The same specification and envelope as shield_on, with the fallback operator:
+# an action outside the admissible envelope is replaced by the null action
+# rather than projected onto the envelope. The two shields differ only in that
+# operator, so the comparison between them isolates repair from blocking.
+_include_:
+  - configs/verification/shield_on.yaml
+
+verification:
+  shield_mode: fallback

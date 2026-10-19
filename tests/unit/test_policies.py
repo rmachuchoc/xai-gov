@@ -107,7 +107,12 @@ def test_dro_rejects_impossible_parameters() -> None:
 
 
 def test_registry_builds_and_reports_planned_families() -> None:
-    assert set(available_policies()) == {"heuristic_sQ", "opaque_dro", "random_bounded"}
+    assert set(available_policies()) == {
+        "heuristic_sQ",
+        "opaque_dro",
+        "qlearning_tabular",
+        "random_bounded",
+    }
     assert build_policy({"name": "heuristic_sQ"}).policy_id == "heuristic_sQ"
     with pytest.raises(NotImplementedError, match="stage 5"):
         build_policy({"name": "marl_heterogeneous"})

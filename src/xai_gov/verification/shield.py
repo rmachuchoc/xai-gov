@@ -87,6 +87,12 @@ class Shield:
     specification: Specification = field(default_factory=Specification)
     horizon_lookahead: int = 1
     max_order: float = 200.0
+    #: How an action outside the admissible envelope is replaced.
+    #: ``projection`` moves it to the nearest admissible quantity;
+    #: ``fallback`` replaces it with the null action whether or not the
+    #: null action is itself admissible. Same envelope, different operator.
+    mode: str = "projection"
+    fallback_inadmissible: int = 0
     activations: int = 0
     decisions: int = 0
     substituted_units: float = 0.0
@@ -99,6 +105,10 @@ class Shield:
     _window: TraceWindow = field(default_factory=TraceWindow, repr=False)
 
     def __post_init__(self) -> None:
+        if self.mode not in ("projection", "fallback"):
+            raise ValueError(
+                f"mode must be 'projection' or 'fallback', not {self.mode!r}"
+            )
         if self.horizon_lookahead < 1:
             raise ValueError("horizon_lookahead must be at least 1")
         if self.max_order <= 0.0:
@@ -200,7 +210,15 @@ class Shield:
         if envelope.contains(quantity):
             return action, quantity, ShieldOutcome()
 
-        substituted = envelope.clamp(quantity)
+        if self.mode == "fallback":
+            # Block rather than repair. When holding is itself inadmissible
+            # the fallback cannot leave the unsafe region, and that case is
+            # counted because it is the mechanism the comparison measures.
+            substituted = 0.0
+            if not envelope.contains(substituted):
+                self.fallback_inadmissible += 1
+        else:
+            substituted = envelope.clamp(quantity)
         delta = abs(substituted - quantity)
         self.activations += 1
         self.substituted_units += delta
@@ -258,6 +276,8 @@ class Shield:
             "escalations_preserved": self.escalations_preserved,
             "conflicts": self.conflicts,
             "conflict_rate": round(self.conflict_rate, 6),
+            "mode": self.mode,
+            "fallback_inadmissible": self.fallback_inadmissible,
             "conflicting_pairs": dict(sorted(self.conflicting_pairs.items())),
         }
         if self.conflicts:

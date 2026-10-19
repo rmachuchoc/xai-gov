@@ -1,0 +1,16 @@
+# Tabular Q-learning over inventory-position and backlog bands. Pre-trained on a
+# single-node surrogate without oversight, then learned online in the twin,
+# crediting each proposed action with the next period's cost.
+policy:
+  name: qlearning_tabular
+  params:
+    alpha: 0.1
+    gamma: 0.95
+    epsilon: 0.05
+    pretrain_episodes: 400
+    pretrain_periods: 60
+    pretrain_epsilon: 0.2
+    demand_mean: 20.0
+    demand_sd: 6.0
+    seed: 20261019
+    online: true

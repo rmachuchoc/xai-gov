@@ -12,11 +12,13 @@ from typing import Any
 
 from xai_gov.policies.base import Policy
 from xai_gov.policies.families import HeuristicSQPolicy, OpaqueDROPolicy, RandomBoundedPolicy
+from xai_gov.policies.qlearning import QLearningPolicy
 
 _BUILDERS: dict[str, Callable[..., Policy]] = {
     "heuristic_sQ": HeuristicSQPolicy,
     "opaque_dro": OpaqueDROPolicy,
     "random_bounded": RandomBoundedPolicy,
+    "qlearning_tabular": QLearningPolicy,
 }
 
 # Families declared in the protocol that do not exist yet. Naming one in a

@@ -1,0 +1,13 @@
+# RQ11 control: Q-learning under the oversight agent with a fallback shield.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/qlearning.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/causal.yaml
+  - configs/verification/shield_fallback.yaml
+
+experiment:
+  name: q_fallback
+  periods: 60
+  master_seed: 20260703

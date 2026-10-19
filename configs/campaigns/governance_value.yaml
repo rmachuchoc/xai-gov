@@ -25,6 +25,10 @@ arms:
   shielded: configs/experiments/high_vol_shielded.yaml
   unshielded: configs/experiments/high_vol_unshielded.yaml
   delegated: configs/experiments/high_vol_delegated.yaml
+  fallback_shield: configs/experiments/high_vol_fallback_shield.yaml
+  q_ungoverned: configs/experiments/q_ungoverned.yaml
+  q_fallback: configs/experiments/q_fallback.yaml
+  q_projection: configs/experiments/q_projection.yaml
 
 hypotheses:
   - id: RQ4
@@ -166,6 +170,36 @@ hypotheses:
     rationale: >-
       The price of verified safety is predicted not to exceed 8 percent of
       cumulative return in nominal scenarios.
+
+  - id: RQ10
+    question: >-
+      Does a projection shield sustain service where a fallback shield over
+      the same specification does not, under a fixed policy?
+    indicator: operational.service_level
+    treatment: shielded
+    control: fallback_shield
+    direction: greater
+    predicted_effect: 0.30
+    rationale: >-
+      Added by amendment in v1.1.0. The two shields share the admissible
+      envelope and differ only in the operator applied outside it, so the
+      difference isolates repair from blocking. Predicted from the v1.0.1
+      contrast between substitution and veto.
+
+  - id: RQ11
+    question: >-
+      Does the projection advantage survive a policy that learns online
+      under the mediation it runs under?
+    indicator: operational.service_level
+    treatment: q_projection
+    control: q_fallback
+    direction: greater
+    predicted_effect: 0.10
+    rationale: >-
+      Added by amendment in v1.1.0. A learner credited with the outcome of
+      its proposals may adapt to proposals that keep being blocked, which
+      would narrow the gap. The smaller predicted effect states that
+      expectation in advance rather than after the run.
 
 exclusion_criteria:
   - runs whose decision log fails hash-chain verification

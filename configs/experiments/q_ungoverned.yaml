@@ -1,0 +1,11 @@
+# Reference arm for the learned policy: Q-learning with no oversight.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/qlearning.yaml
+  - configs/governance/no_governance.yaml
+
+experiment:
+  name: q_ungoverned
+  periods: 60
+  master_seed: 20260703
