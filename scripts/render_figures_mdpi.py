@@ -122,7 +122,11 @@ def _patched_savefig(self: Figure, fname, *args, **kwargs):  # type: ignore[no-u
             # of the y tick labels. Extending the axis left by more than an
             # order of magnitude opens the space those labels need.
             low, high = ax.get_xlim()
-            ax.set_xlim(low / 40.0, high)
+            ax.set_xlim(low / 40.0, high * 8.0)
+            # The base script labels bars as 1.62e+06; the text, Table 2 and
+            # Figure 6 write 1.62 x 10^6. One notation across the manuscript.
+            for text in ax.texts:
+                text.set_text(_sci_label(text.get_text()))
 
     # Text moved outside the axes would be cropped by a fixed bounding box.
     kwargs.setdefault("bbox_inches", "tight")
@@ -131,6 +135,24 @@ def _patched_savefig(self: Figure, fname, *args, **kwargs):  # type: ignore[no-u
 
 
 Figure.savefig = _patched_savefig  # type: ignore[method-assign]
+
+
+def _sci_label(raw: str) -> str:
+    """Rewrite 1.62e+06 as 1.62 x 10^6 in mathtext; leave other text alone.
+
+    Values below 1000 (the inconclusive and reverse e-values) stay in plain
+    decimals, matching Table 2, where only large e-values use powers of ten.
+    """
+    import re
+
+    match = re.fullmatch(r"\s*([+-]?\d+(?:\.\d+)?)e([+-]?\d+)\s*", raw)
+    if not match:
+        return raw
+    mantissa, exponent = match.group(1), int(match.group(2))
+    value = float(mantissa) * 10.0**exponent
+    if 1e-2 <= abs(value) < 1e3:
+        return f"{value:.3g}"
+    return rf"${mantissa}\times10^{{{exponent}}}$"
 
 if __name__ == "__main__":
     script = Path(__file__).resolve().parent / "render_figures.py"
