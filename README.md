@@ -44,10 +44,13 @@ Two things the study does **not** claim:
 
 ## Releases
 
-| Tag | Commit | Data (Zenodo) | Notes |
-| --- | --- | --- | --- |
-| `v1.1.0` | `c7d5548` | [10.5281/zenodo.23484768](https://doi.org/10.5281/zenodo.23484768) | Current. Adds Q-learning, the fallback shield, RQ10–RQ11, a predeclared e-value scale and the 2k/α threshold |
-| `v1.0.1` | `74e346b` | [10.5281/zenodo.23091494](https://doi.org/10.5281/zenodo.23091494) | Earlier submission; superseded |
+| Tag | Data (Zenodo) | Notes |
+| --- | --- | --- |
+| `v1.1.0` | [10.5281/zenodo.23484768](https://doi.org/10.5281/zenodo.23484768) | Current. Adds Q-learning, the fallback shield, RQ10–RQ11, a predeclared e-value scale and the 2k/α threshold |
+| `v1.0.1` | [10.5281/zenodo.23091494](https://doi.org/10.5281/zenodo.23091494) | Earlier submission; superseded |
+
+Each tag points to the exact commit that produced its data, and the Zenodo
+bundle records that commit in `PROVENANCE.txt`.
 
 `CHANGELOG-v1.1.0.md` lists every change in the current release, including two
 analysis corrections made before it was published. In short: the e-value
