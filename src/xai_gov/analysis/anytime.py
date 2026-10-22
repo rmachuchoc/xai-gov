@@ -276,7 +276,7 @@ def directional_evidence(
     if not differences:
         raise ValueError("cannot test an empty set of differences")
 
-    scale = max(max(abs(value) for value in differences), 1e-9)
+    scale = 1.0  # predeclared: indicators lie in [0, 1], so paired differences lie in [-1, 1]
 
     def run(values: list[float]) -> float:
         martingale = MeanShiftMartingale(alpha=alpha, scale=scale)
@@ -295,7 +295,7 @@ def directional_evidence(
         forward=forward,
         reverse=reverse,
         threshold=1.0 / alpha,
-        familywise_threshold=hypotheses / alpha,
+        familywise_threshold=2 * hypotheses / alpha,
         observations=len(differences),
         forward_null=(
             f"no difference or an effect opposite to the prediction on {indicator}"

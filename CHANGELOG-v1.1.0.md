@@ -24,3 +24,15 @@ over a policy that adapts to the mediation it runs under.
 - Projection remains the default operator; every v1.0.1 arm, seed and result is
   reproduced exactly. The 640 confirmatory cells are reused on resume because
   their resolved configuration hashes are unchanged.
+
+## Analysis corrections (folded into v1.1.0 before release)
+- E-values and confidence sequences used a scale taken from the full sample
+  (max |d_i|), so each bet depended on observations not yet made and the
+  process was not a martingale. The scale is now the constant 1: every
+  indicator lies in [0, 1], so paired differences already lie in [-1, 1].
+- The familywise threshold counts two directional tests per hypothesis:
+  2k/alpha = 400 for k = 10.
+- Supported: RQ8, RQ9, RQ10, RQ11. Refuted: RQ4. Inconclusive: RQ3, RQ6,
+  RQ6b, RQ6c, RQ6d. No simulation was re-run; only the analysis was
+  recomputed over the same 800 cells.
+- Regression tests fail if a data-dependent scale is reintroduced.

@@ -72,11 +72,11 @@ def test_the_payload_states_what_a_small_forward_value_means() -> None:
 def test_the_familywise_threshold_scales_with_the_hypothesis_count() -> None:
     """Anytime validity handles optional stopping and nothing else. With k
     hypotheses, a union bound over e-values gives familywise control at alpha
-    by requiring e >= k/alpha."""
+    by requiring e >= 2k/alpha, since each hypothesis is tested in two directions."""
     single = directional_evidence(rising(0.5), alpha=0.05, hypotheses=1)
     family = directional_evidence(rising(0.5), alpha=0.05, hypotheses=7)
-    assert single.familywise_threshold == pytest.approx(20.0)
-    assert family.familywise_threshold == pytest.approx(140.0)
+    assert single.familywise_threshold == pytest.approx(40.0)
+    assert family.familywise_threshold == pytest.approx(280.0)
     assert family.threshold == single.threshold == pytest.approx(20.0)
 
 
@@ -144,3 +144,35 @@ def test_a_two_sided_claim_still_detects_a_real_effect() -> None:
     """Pooling halves the value at most, so a strong effect stays decisive."""
     evidence = directional_evidence(rising(0.6), hypotheses=8, two_sided=True)
     assert evidence.supported is True
+
+
+def test_scale_is_predeclared_not_data_dependent() -> None:
+    """Guards the v1.1.1 fix.
+
+    A scale taken from the sample uses observations that have not happened
+    yet when each bet is placed, so the process is not a martingale and the
+    e-values are inflated. Indicators lie in [0, 1], so paired differences
+    already lie in [-1, 1] and the scale must be the constant 1.
+    """
+    import inspect
+
+    from xai_gov.analysis import anytime, report
+
+    for module in (anytime, report):
+        source = inspect.getsource(module)
+        assert "max(abs(value) for value" not in source, module.__name__
+
+
+def test_small_effect_gives_weaker_evidence_than_large_effect() -> None:
+    """With a fixed scale, a consistent difference of 0.02 must produce less
+    evidence than a consistent difference of 0.60. Rescaling by the sample
+    maximum would make both look identical, which is the bug this prevents."""
+    from xai_gov.analysis.anytime import MeanShiftMartingale
+
+    def evidence(value: float) -> float:
+        martingale = MeanShiftMartingale(alpha=0.05, scale=1.0)
+        for _ in range(40):
+            martingale.update(value)
+        return martingale.value
+
+    assert evidence(0.02) < evidence(0.60)

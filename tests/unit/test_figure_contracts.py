@@ -53,7 +53,7 @@ def test_the_familywise_threshold_travels_with_the_evidence() -> None:
     payload = directional_evidence(
         [0.5] * 20, alpha=0.05, hypotheses=8, indicator="x"
     ).to_payload()
-    assert payload["familywise_threshold"] == 160.0
+    assert payload["familywise_threshold"] == 320.0
     assert payload["per_comparison_threshold"] == 20.0
 
 

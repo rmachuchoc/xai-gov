@@ -127,7 +127,7 @@ def test_hypothesis(
         indicator=hypothesis.indicator.split(".")[-1],
     )
 
-    scale = max(max(abs(value) for value in oriented), 1e-9)
+    scale = 1.0  # predeclared: indicators lie in [0, 1], so paired differences lie in [-1, 1]
     # On the *raw* differences, not the oriented ones. Orientation is an
     # internal device for the one-sided test; a reader comparing the interval
     # against the raw difference in the adjacent column must not find them on
@@ -190,12 +190,13 @@ class CampaignReport:
                 "alpha": self.plan.alpha,
                 "per_comparison_threshold": round(1.0 / self.plan.alpha, 4),
                 "familywise_threshold": round(
-                    len(self.hypotheses) / self.plan.alpha, 4
+                    2 * len(self.hypotheses) / self.plan.alpha, 4
                 ),
                 "primary": "familywise",
                 "procedure": (
                     "union bound over e-values: with k preregistered hypotheses, "
-                    "requiring e >= k/alpha controls the familywise error rate at "
+                    "requiring e >= 2k/alpha (two directional tests per hypothesis) "
+                    "controls the familywise error rate at "
                     "alpha. Anytime validity handles optional stopping and says "
                     "nothing about multiplicity, so both are declared separately."
                 ),
