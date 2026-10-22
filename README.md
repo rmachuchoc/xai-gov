@@ -1,216 +1,172 @@
-# XAI-Gov
+# xai-gov
 
-Agent-governed digital twin for supply chains: causal explainable AI,
-adaptive conformal inference, a constrained-POMDP governance agent under a
-verified safety shield, and an auditable traceability contract.
+Code and study pipeline for the paper **"Action Substitution versus Fallback
+Shields in Constrained POMDPs under Distribution Shift"** (submitted to
+*Machine Learning and Knowledge Extraction*, MDPI).
 
-Reference document: *The XAI-Gov Project — research protocol*.
+The question the code answers is narrow. When a shield blocks an unsafe action,
+what should it put in its place? A **fallback** shield substitutes a fixed
+default, usually "do nothing". A **projection** shield substitutes the nearest
+action that satisfies the safety specification. The two are often treated as
+interchangeable. They are not when doing nothing is itself unsafe, and in
+inventory replenishment during a disruption, it usually is.
 
-## Requirements
+## What the study found
 
-Ubuntu 24.04 LTS, Python 3.12, free software only. The virtual environment
-is expected at `.venv` inside the project root.
+All numbers come from 800 seed-paired runs (20 arms × 40 replicates) of a
+three-echelon supply-network twin under high-volatility demand.
 
-## Install
+| Base policy | No shield | Fallback shield | Projection shield |
+| --- | --- | --- | --- |
+| Fixed robust policy (DRO) | 0.611 | 0.059 | 0.670 |
+| Tabular Q-learning, learning online | 0.671 | 0.063 | 0.649 |
 
-```bash
-git clone https://github.com/rmachuchoc/xai-gov.git
-cd xai-gov
-python3.12 -m venv .venv
-source .venv/bin/activate
-make install          # dev dependencies + editable install
-make check            # ruff, mypy, pytest
-make doctor           # audit the environment for reproducibility risks
-```
+Values are mean service levels. The projection–fallback gap is supported for
+both policies (e = 1.62 × 10⁶ and 9.35 × 10⁵, against a familywise threshold
+of 400). The Q-learning policy did not learn to avoid the fallback within the
+60-period horizon.
 
-Always run tests through `make test`, never bare `pytest`. Pytest
-autoloads every plugin registered on the system, and a test result that
-depends on unrelated system packages is not reproducible; `make test` sets
-`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` so collection sees only this project.
-On a machine with ROS on `PYTHONPATH`, bare `pytest` fails outright — its
-`launch_testing` plugin imports `lark`. `make doctor` reports that and
-similar hazards.
+Of ten preregistered hypotheses, four are supported, one is refuted in the
+opposite direction (mediation with a null default *lowered* service by 0.55
+instead of raising it), and five are inconclusive. The five inconclusive ones
+concern the conformal detector and the explanation descriptors.
 
-If the project lives elsewhere, export `XAI_GOV_ROOT`; nothing in the
-code assumes a hard-coded path.
+Two things the study does **not** claim:
 
-## Current state — complete
+- **Coverage.** The adaptive conformal detector under-flagged in 17 of 20 arms.
+  Excluding the forecaster's warm-up from calibration moved the error in the
+  direction the warm-up lemma predicts, but not past the threshold. No coverage
+  guarantee is reported as holding.
+- **External validity beyond the calibration gap.** Calibrated against 30 M5
+  store-by-category series, the twin's demand process matches the moments of
+  real demand but not its persistence (median posterior predictive gap 9.33;
+  4.16 with an AR(1) term).
 
-All six stages are in place. Runs execute end to end, leave verifiable
-artifacts, and can be governed by a constrained-POMDP agent whose
-intervention threshold is *derived*, whose explanations are *audited*, and
-whose actions pass a shield *synthesized from a formal specification*.
+## Releases
 
-```bash
-xai-gov info                                  # resolved paths and settings
-xai-gov factors                               # available experimental factors
-xai-gov run --experiment configs/experiments/high_vol_delegated.yaml
-xai-gov kpis <run-name>                       # the six indicator layers
-xai-gov runs                                  # list runs with chain status
-xai-gov verify-log <run-name>                 # verify a decision log
-```
+| Tag | Commit | Data (Zenodo) | Notes |
+| --- | --- | --- | --- |
+| `v1.1.0` | `c7d5548` | [10.5281/zenodo.23484768](https://doi.org/10.5281/zenodo.23484768) | Current. Adds Q-learning, the fallback shield, RQ10–RQ11, a predeclared e-value scale and the 2k/α threshold |
+| `v1.0.1` | `74e346b` | [10.5281/zenodo.23091494](https://doi.org/10.5281/zenodo.23091494) | Earlier submission; superseded |
 
-Or `make run EXP=configs/experiments/high_vol_shielded.yaml`.
+`CHANGELOG-v1.1.0.md` lists every change in the current release, including two
+analysis corrections made before it was published. In short: the e-value
+betting fraction used to be scaled by the largest observed difference, which
+let each bet depend on data not yet seen. It is now the constant 1, and the
+familywise threshold counts two directional tests per hypothesis.
 
-**What exists.** A multi-echelon twin (retail → distribution → plant) with
-stochastic lead times, an in-transit pipeline, backlog propagation upstream,
-capacity limits and four disruption mechanisms. Five demand regimes, three of
-which deliberately break exchangeability and declare where. Three policy
-families: the classical `heuristic_sQ`, an `opaque_dro` robust policy, and
-`random_bounded` as the falsification arm.
+## Installation
 
-The conformal layer: studentized nonconformity over a causal EWMA forecast,
-recency-weighted calibration with a reported effective sample size, adaptive
-conformal inference (ACI) with a clipped level and saturation diagnostics, a
-mixture power martingale for anytime-valid change detection, and optional
-conformal risk control calibrated against a safety loss rather than coverage.
-The classical split scheme is kept as the control arm for RQ6.
-
-The governance layer: a belief filter over {nominal, drift, disruption}; the
-intervention threshold b\* solved by value iteration on the collapsed belief
-(with the closed-form myopic threshold computed alongside it as a rail); a
-discounted budget constraint priced by a Lagrange multiplier that reports
-κ\*, the shadow price of oversight capacity; and H0–H3 modelled as
-allocations of decision rights — differing in *when* the organization
-exercises what it retained, not merely in how much it grants.
-
-The causal layer: a structural causal model whose mechanisms are the
-simulator's own — a test fails if the two drift apart, because a silent
-divergence would leave every downstream number well formed while describing a
-mechanism the twin does not run. Recourse is filtered to levers that are
-admissible, identifiable and affordable, and every descriptor arm passes
-through the same explanatory-fidelity audit, including the post-hoc one, which
-is implemented in good faith rather than as a straw man.
-
-The verification layer: safety properties in probabilistic temporal logic,
-exact reachability checking on a declared finite abstraction, and a shield
-*synthesized* from those properties — so adding a property changes the shield
-instead of requiring someone to hand-edit a safe mode that then drifts from the
-specification. The shield can raise a quantity governance zeroed: cancelling a
-replenishment during a stockout is itself a way to violate a property, and an
-agent whose only tool is refusal will do it. Runtime monitors report when the
-concrete run leaves the model the properties were verified on, because a run
-that advertises verified properties after diverging from that model is making a
-claim it cannot support.
-
-The oversight layer: escalation as learned delegation against a simulated
-supervisor with finite attention, regime-dependent competence and fatigue —
-better than the system under disruption, worse under nominal conditions, which
-is what makes the allocation non-trivial. A complementarity ledger scores the
-team, the human alone and the system alone on every decision, so RQ7 can come
-out negative.
-
-The analysis layer: preregistered plans sealed by hash, so an analysis that
-does not match its seal is reported as exploratory rather than confirmatory.
-Comparisons use e-values and betting martingales, which means a campaign may be
-stopped when the compute runs out or extended later without correction — the
-fixed-sample statistics the field normally uses forbid exactly the thing
-simulation research must do. Sobol indices separate findings about governance
-from findings about a declared cost. Calibration against public data yields a
-posterior rather than a point estimate, and the sim-to-real gap is measured on
-statistics held out of the fit. The Pareto frontier is the deliverable Theorem 3
-implies: no arm is best on coverage, budget and return at once, so the artifact
-is the set of informed choices and their exchange rates.
+Python 3.12 on Linux. From the repository root:
 
 ```bash
-xai-gov seal configs/campaigns/smoke.yaml       # commit the plan first
-xai-gov campaign configs/campaigns/smoke.yaml --replicates 5
-
-make study-quick                                # the whole pipeline, fast
-make study                                      # the committed study, n = 30
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+make check        # ruff, mypy and 631 tests
 ```
 
-`make study` runs the five phases in the order the protocol requires: the
-power check first (a campaign that cannot detect the effect it seeks should not
-consume a week of compute, so an under-powered study is refused unless
-overridden), then the seal, then the campaign, then sensitivity, then
-calibration. It writes a study bundle carrying the sealed plan, the per-cell
-run identifiers, the evidence for each hypothesis, the frontier, the Sobol
-indices and the sim-to-real gap — the object to hand a reviewer.
+If ROS or another framework is on your `PYTHONPATH`, the `Makefile` clears it
+for every target, so the test run stays isolated.
 
-**What does not exist, and says so.** The `marl_heterogeneous` and `llm_agent`
-policy families and the `multi_role` / `federated` governance architectures
-fail with a message naming what would be required. Indicator layers write
-`{"status": "not_available", "requires": …}` rather than a silent zero — a KPI
-file with a fabricated zero corrupts a meta-analysis; one with a stated gap is
-merely incomplete.
+## Reproducing the study
 
-## Layout
+Every run is deterministic given its seed, so the commands below reproduce the
+archived results exactly.
 
-```
-configs/          declarative configuration, composed via _include_
-  app/            paths, logging, runtime, tracking
-  network/        topologies: single_echelon, three_echelon
-  scenarios/      demand regimes and disruption schedules
-  policies/       one file per policy family
-  conformal/      detector schemes: aci_adaptive, split_classical, risk_controlled
-  explainability/ descriptor arms: none, post_hoc, causal
-  verification/   safety properties and the shield: shield_on, shield_off
-  oversight/      deferral policies: none, threshold, learned
-  campaigns/      preregistered analysis plans
-  analysis/       sensitivity parameter ranges
-  governance/     architectures, autonomy regimes, economics and budgets
-  experiments/    composed runs; each declares its own master_seed
-data/             raw, interim, processed (DVC-tracked)
-outputs/runs/     one directory per run; never edited by hand
-specs/            PCTL properties and synthesized shields (stage 5)
-scripts/          doctor.py (environment audit), retire_legacy.sh
-src/xai_gov/      the package, one subpackage per protocol layer
-  core/ io/       determinism, hashing, config, decision log, run artifacts
-  simulation/     network, state, demand, disruptions, engine
-  policies/       base, families, registry
-  conformal/      scores, calibrator, adaptive, martingale, risk_control, detector
-  causal/         scm, recourse, fidelity, descriptor
-  verification/   specification, model_checker, shield, monitors
-  oversight/      supervisor, delegation
-  analysis/       preregistration, campaign, anytime, sensitivity, calibration,
-                  frontier, report
-  governance/     agent, belief, thresholds, budget, autonomy, cpomdp, registry
-  kpis/           the six indicator layers
-  orchestration/  experiment composition and execution
-tests/            unit and integration tests mirroring src/
+```bash
+make study        # confirmatory campaign: 20 arms × 40 replicates
+make sweeps       # break-even and severity sweeps: 300 runs
 ```
 
-## Contracts
+`make study` refuses to start if the power check fails, seals the analysis plan
+by hash before the first run, and reuses cached runs only when their
+configuration hash and exclusion-criteria version still match. If you edit the
+plan, use `make study-amend`; it records an amendment and keeps the superseded
+seal.
 
-Four invariants hold across the codebase and are covered by tests:
+Outputs go to `outputs/campaigns/governance_value/`:
 
-1. **Determinism.** One master seed per run; every component derives its
-   own stream by label, so adding a component never shifts an existing
-   one's random draws.
-2. **Traceability.** No decision executes without a sealed record. The log
-   is append-only and hash-chained; a run whose chain fails verification
-   never receives a manifest.
-3. **Configuration outside the code.** No module reads YAML on its own and
-   no path is built by string concatenation.
-4. **Honest failure.** A contract violation aborts the run and says which
-   contract broke. A component that does not exist yet names the stage that
-   will deliver it. Nothing degrades silently and nothing reports a
-   fabricated value.
-5. **Proposal, mediation, enforcement are separate authorities.** A policy
-   proposes and can never execute; only governance may alter a proposal;
-   only the shield may override governance. The decision record shows all
-   three, so responsibility for any executed action is attributable. The
-   layering is enforced by tests that import each module first in a cold
-   interpreter — an import cycle here would mean the simulation reaching into
-   the authorities meant to constrain it.
-6. **Decision boundaries are derived, not chosen.** No threshold in the
-   governance path is read from a configuration file. b\* comes from value
-   iteration on declared economics, so changing the cost of an intervention
-   moves the boundary automatically and in the direction Theorem 2 predicts —
-   a claim the test suite checks rather than asserts.
+- `study_bundle.json`: everything, including the sealed plan and run IDs
+- `digest.md`: a readable summary with diagnostics
+- `tables.md`: the manuscript tables, generated rather than transcribed
+- `cells.csv`: one row per run
 
-## Roadmap
+The script exits with status 1 when a blocking diagnostic is raised. Two are
+expected in this release: the detector's under-flagging, and the
+synthetic-reference calibration in phase 5 of the study script. The manuscript
+uses the M5 calibration below instead.
 
-| Stage | Content |
-| --- | --- |
-| 1 | Reproducibility base and traceability contract *(delivered)* |
-| 2 | Multi-echelon twin, policy families, experiment runner, KPI layers *(delivered)* |
-| 3 | Adaptive conformal inference, test martingales, governance CPOMDP over beliefs *(delivered)* |
-| 4 | Structural causal model and causal recourse, explanatory fidelity *(delivered)* |
-| 5 | PCTL specifications, shield synthesis, runtime monitors, learned delegation *(delivered)* |
-| 6 | Campaigns, anytime-valid statistics, simulation-based calibration, benchmark *(delivered)* |
+## Real-data calibration (M5)
+
+The M5 series are licensed and are **not** in the repository. Download the
+competition files yourself, then:
+
+```bash
+make m5 M5_SOURCE=~/Downloads/m5    # writes 30 series to data/demand/
+make calibrate                       # weekly cadence, i.i.d. and AR(1) fits
+make caltable                        # LaTeX table for the manuscript
+```
+
+`data/demand/README.md` explains the aggregation level and the cadence choice.
+
+## Figures
+
+The manuscript figures are produced by three scripts, all reading from the
+study bundle:
+
+```bash
+.venv/bin/python scripts/render_figures_mdpi.py   --dpi 600   # Figures 2–5
+.venv/bin/python scripts/render_network_png.py    --dpi 600   # Figure 1 (network)
+.venv/bin/python scripts/render_operator_figure.py --dpi 600  # Figure 6 (operators)
+```
+
+PNGs land in `outputs/campaigns/governance_value/figures/print/`. Copy them to
+the `Definitions/` folder of the LaTeX project. `make figures` still exists but
+calls the original renderer, which predates the editorial fixes; use the three
+scripts above for the paper.
+
+## Repository layout
+
+```
+src/xai_gov/
+  simulation/     the twin: network, demand regimes, disruptions, engine
+  policies/       heuristic, robust DRO, random, tabular Q-learning
+  conformal/      scores, calibrators, adaptive level, martingales, detector
+  governance/     belief filter, threshold solver, budget, CPOMDP mediator
+  verification/   PCTL specification, model checker, shield, monitors
+  causal/         structural model, recourse, fidelity audit, descriptors
+  analysis/       power, preregistration, campaigns, e-values, sweeps,
+                  sensitivity, calibration, frontier, figures
+configs/          every experiment, arm and campaign as YAML
+scripts/          study, sweeps, M5, calibration and figure entry points
+tests/            unit and integration tests; the theorems are assertions here
+```
+
+Three rules the code enforces, because each was learned from a defect that
+completed silently:
+
+1. **A cache key covers the configuration, not only the criteria.** Otherwise a
+   changed arm is compared against a stale copy of itself.
+2. **A sign convention is part of the hypothesis.** One-sided tests run on
+   absolute coverage error, not the signed error.
+3. **A condition that holds in every arm is a diagnostic, not an exclusion.**
+   Excluding on it would delete the study instead of protecting it.
+
+## Use of generative AI
+
+Claude Opus 4 (Anthropic) was used for code development and debugging,
+formatting of results, and drafting and editing of text. The authors reviewed
+all generated material and are responsible for the content of this repository
+and of the paper.
+
+## Citation
+
+If you use the code, please cite the archived release:
+
+> Ortiz, D.; Machucho, R.; Hernandez, J.; Garcia, J.; Herrera, H.; Lopez, J.
+> *xai-gov study bundle v1.1.0* [Data set and software]. Zenodo, 2026.
+> https://doi.org/10.5281/zenodo.23484768
 
 ## License
 
-MIT.
+See `LICENSE`. The M5 data remain under their original competition terms.
