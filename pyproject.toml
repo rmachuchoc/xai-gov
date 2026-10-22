@@ -34,7 +34,9 @@ dev = [
   "pytest-cov>=5.0.0",
   "ruff>=0.5.0",
   "mypy>=1.10.0",
+  "types-PyYAML>=6.0",
 ]
+figures = ["matplotlib>=3.8"]
 # Installed in later stages, kept declared so the environment is auditable.
 sim = ["simpy>=4.1", "mesa>=2.3"]
 ml = ["scikit-learn>=1.5", "torch>=2.3"]

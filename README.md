@@ -64,9 +64,13 @@ Python 3.12 on Linux. From the repository root:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -e ".[dev,figures]"
 make check        # ruff, mypy and 631 tests
 ```
+
+The network diagram (Figure 1) is converted from SVG with `rsvg-convert`.
+On Ubuntu or Debian, install it with `sudo apt install librsvg2-bin`.
 
 If ROS or another framework is on your `PYTHONPATH`, the `Makefile` clears it
 for every target, so the test run stays isolated.
