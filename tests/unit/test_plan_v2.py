@@ -114,3 +114,11 @@ def test_replicates_below_the_minimum_are_refused() -> None:
     hypothesis = Hypothesis("A", "q", "operational.fill_rate", "t", "c", "greater", 0.1)
     with pytest.raises(ValueError, match="below its own minimum"):
         Preregistration(campaign="x", hypotheses=(hypothesis,), replicates=10)
+
+
+def test_the_repository_plan_matches_its_seal(plan: Preregistration, project_root: Path) -> None:
+    """Editing the sealed plan turns this red: amend it with seal_v2.py --amend."""
+    from xai_gov.analysis.preregistration import load_seal
+
+    _, sealed_hash = load_seal(project_root / "specs/v2/confirmatory_v2.seal.json")
+    assert sealed_hash == plan.plan_hash
