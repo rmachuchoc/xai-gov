@@ -20,7 +20,7 @@ from xai_gov.core.settings import Settings
 from xai_gov.governance.registry import build_governance
 from xai_gov.io.writers import RunWriter
 from xai_gov.io.yaml_loader import load_config
-from xai_gov.kpis.layers import compute_kpis
+from xai_gov.kpis.layers import DetectorTarget, compute_kpis
 from xai_gov.policies.registry import build_policy
 from xai_gov.simulation.demand import build_demand
 from xai_gov.simulation.disruptions import build_schedule
@@ -50,6 +50,19 @@ def _require_mapping(config: dict[str, Any], key: str) -> dict[str, Any]:
     if not isinstance(node, dict):
         raise ValueError(f"experiment section {key!r} must be a mapping")
     return node
+
+
+def detector_target(config: dict[str, Any]) -> DetectorTarget:
+    """The detector's declared target level and ε_t clip, from configuration."""
+    level = ((config.get("conformal") or {}).get("level") or {})
+    params = level.get("params") or {}
+    if str(level.get("scheme", "aci")) != "aci":
+        return DetectorTarget(target_level=float(params.get("target_level", 0.1)))
+    return DetectorTarget(
+        target_level=float(params.get("target_level", 0.1)),
+        min_level=float(params.get("min_level", 0.005)),
+        max_level=float(params.get("max_level", 0.5)),
+    )
 
 
 def plan_experiment(path: Path, *, settings: Settings) -> ExperimentPlan:
@@ -181,6 +194,7 @@ def run_experiment(
                 shock_periods=shock_periods,
                 specification=build_specification(verification.get("specification")),
                 horizon_lookahead=int(verification.get("horizon_lookahead", 1)),
+                detector_target=detector_target(plan.config),
             )
         )
         return writer.close()

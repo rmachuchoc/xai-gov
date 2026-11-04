@@ -18,7 +18,7 @@ PYTEST_ENV := $(SAFE_ENV) PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 PYTEST_PLUGINS_ARGS :=
 COV_PLUGIN := -p pytest_cov
 
-.PHONY: install test cov lint types check info tree doctor doctor-raw run study study-amend study-quick sweeps figures m5 demand calibrate caltable clean
+.PHONY: install test cov lint types check info tree doctor doctor-raw run study study-amend study-quick sweeps detector-null figures m5 demand calibrate caltable clean
 
 install:
 	$(PIP) install --upgrade pip wheel setuptools
@@ -71,6 +71,12 @@ DPI ?= 300
 SWEEP_REPLICATES ?= 10
 sweeps:
 	$(SAFE_ENV) $(PY) scripts/run_sweeps.py --replicates $(SWEEP_REPLICATES)
+
+# The detector null line (decision 6): 200 stationary runs per detector arm.
+# The martingale's Ville bound is not claimed; its false-alarm rate is measured
+# here, with a Clopper-Pearson interval, along with how often eps_t is clipped.
+detector-null:
+	$(SAFE_ENV) $(PY) scripts/run_detector_null.py --workers $(WORKERS)
 
 # Turn a local copy of the M5 competition data into store x category demand
 # series. The data is not in the repository: the competition terms permit use

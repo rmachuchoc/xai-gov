@@ -1,0 +1,10 @@
+# The detector null line (decision 6 of the revision). The Ville bound on the
+# change martingale is not claimed; its false-alarm rate is measured instead on
+# stationary runs. Each arm is run at `replicates` seeds derived from
+# `base_seed`, which is distinct from every campaign seed.
+null_line: detector_null
+replicates: 200
+base_seed: 20261104
+arms:
+  adaptive: configs/experiments/null_adaptive.yaml
+  reference_scale: configs/experiments/null_reference_scale.yaml

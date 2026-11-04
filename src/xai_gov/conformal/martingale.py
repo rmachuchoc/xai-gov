@@ -7,16 +7,14 @@ accumulated evidence: a sequence of bets against the hypothesis of
 exchangeability whose expected value under that hypothesis is bounded by its
 starting value.
 
-Ville's inequality then gives an anytime-valid stopping rule: for a
-nonnegative martingale started at 1,
-
-    P( sup_t M_t ≥ 1/δ ) ≤ δ
-
-so declaring a change the first time M exceeds 1/δ controls the false-alarm
-probability at δ *whenever* the analyst looks, with no correction for how
-long they watched or how often they checked. That is the property the
-project's statistical commitments require, and it is why this signal — not
-an exceedance counter — is what enters the governance agent's belief state.
+For a nonnegative martingale started at 1, Ville's inequality bounds
+P( sup_t M_t ≥ 1/δ ) by δ. **That bound is not claimed here.** It needs the
+p-values to be exactly uniform and independent under the null, and these are
+not: the calibration set is recency-weighted and updated online, the scores
+come from a forecaster that keeps learning, and the demand an upstream node
+sees is its customer's orders. So 1/δ is used only as the declaration
+threshold, and the false-alarm rate is *measured*, on stationary null runs
+(`analysis.detector_null`), instead of being bounded by δ.
 
 The bets are placed on conformal p-values. Under exchangeability those are
 uniform on (0, 1); a power bet p^(ε−1) pays off when p-values run small,
@@ -78,7 +76,7 @@ class MixturePowerMartingale:
     # -- state ------------------------------------------------------------
     @property
     def threshold(self) -> float:
-        """The Ville threshold 1/δ."""
+        """The declaration threshold 1/δ (a threshold, not a guarantee)."""
         return 1.0 / self.delta
 
     @property
@@ -133,10 +131,9 @@ class MixturePowerMartingale:
     def reset(self) -> None:
         """Restart the bets after a declared change has been acted upon.
 
-        Resetting is a modeling choice with a cost: validity is restored for
-        the next change, but the guarantee applies per betting episode rather
-        than over the whole horizon. The number of episodes is recorded so a
-        union bound can be applied in the analysis.
+        Resetting is a modeling choice: the next betting episode starts from
+        1 again. No false-alarm bound is claimed for either episode; the null
+        line measures the rate.
         """
         self._log_components = [0.0] * len(self.epsilons)
         self.declared_at = None
@@ -145,6 +142,10 @@ class MixturePowerMartingale:
     def to_payload(self) -> dict[str, Any]:
         return {
             "delta": self.delta,
+            "declaration_threshold": round(self.threshold, 6),
+            # Decision 6 of the revision: no Ville bound is claimed.
+            "false_alarm_guarantee": None,
+            "false_alarm_rate": "measured on the stationary null line",
             "epsilons": list(self.epsilons),
             "observations": self.observations,
             "log_value": round(self.log_value, 6),

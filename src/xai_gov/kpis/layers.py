@@ -15,6 +15,7 @@ merely incomplete.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any
 
 from xai_gov.io.decision_record import DecisionRecord, GovernanceAction
@@ -213,16 +214,102 @@ def _verification_block(records: list[DecisionRecord]) -> dict[str, Any]:
         "max_substitution": round(max(substituted), 6),
     }
 
-def guarantees_layer(
-    records: list[DecisionRecord], *, shock_periods: tuple[int, ...] = ()
-) -> dict[str, Any]:
-    """Realized coverage, detection delay and saturation.
+@dataclass(frozen=True, slots=True)
+class DetectorTarget:
+    """The level the detector is asked to attain, and the clip on ε_t."""
 
-    This is the layer that would have caught the pilot's failure. An OOD rate
-    near 1.0 against a nominal level of 0.1 is not an anomalous environment,
-    it is a saturated detector, and the coverage error names that gap directly
-    rather than leaving it to be inferred from a raw flag count.
+    target_level: float = 0.1
+    min_level: float | None = None
+    max_level: float | None = None
+
+
+def _clip_episodes(flags: list[bool]) -> list[int]:
+    """Lengths of maximal runs of consecutive True values."""
+    episodes: list[int] = []
+    run = 0
+    for flag in flags:
+        if flag:
+            run += 1
+        elif run:
+            episodes.append(run)
+            run = 0
+    if run:
+        episodes.append(run)
+    return episodes
+
+
+def _clip_summary(levels: list[float], target: DetectorTarget) -> dict[str, Any]:
+    """How often, and for how long, ε_t sat on its clip bounds."""
+    tol = 1e-9
+    low = [target.min_level is not None and v <= target.min_level + tol for v in levels]
+    high = [target.max_level is not None and v >= target.max_level - tol for v in levels]
+    either = [a or b for a, b in zip(low, high, strict=True)]
+    episodes = _clip_episodes(either)
+    n = max(len(levels), 1)
+    return {
+        "periods": len(levels),
+        "clipped_low": sum(low),
+        "clipped_high": sum(high),
+        "clipped_frequency": round(sum(either) / n, 6),
+        "episodes": len(episodes),
+        "mean_duration": round(sum(episodes) / len(episodes), 6) if episodes else 0.0,
+        "max_duration": max(episodes, default=0),
+    }
+
+
+def _epsilon_block(scored: list[DecisionRecord], target: DetectorTarget) -> dict[str, Any]:
+    """Per-node ε_t trajectory and its clipping (decisions 6 and 7 of the revision)."""
+    by_node: dict[str, list[tuple[int, float]]] = {}
+    for record in scored:
+        by_node.setdefault(record.node_id, []).append((record.period, record.conformal.level))
+    trajectories = {
+        node: [[period, round(level, 6)] for period, level in sorted(entries)]
+        for node, entries in sorted(by_node.items())
+    }
+    block: dict[str, Any] = {"trajectory": trajectories}
+    if target.min_level is not None or target.max_level is not None:
+        per_node = {
+            node: _clip_summary([level for _, level in sorted(entries)], target)
+            for node, entries in sorted(by_node.items())
+        }
+        nodes = list(per_node.values())
+        total_periods = sum(node["periods"] for node in nodes)
+        # The bounds are distinct, so a period is clipped low or high, never both.
+        clipped = sum(node["clipped_low"] + node["clipped_high"] for node in nodes)
+        episodes = sum(node["episodes"] for node in nodes)
+        block["clipping"] = {
+            "min_level": target.min_level,
+            "max_level": target.max_level,
+            "clipped_frequency": round(clipped / total_periods, 6) if total_periods else 0.0,
+            "episodes": episodes,
+            "max_duration": max((node["max_duration"] for node in nodes), default=0),
+            "mean_duration": round(
+                sum(node["mean_duration"] * node["episodes"] for node in nodes)
+                / max(episodes, 1),
+                6,
+            ),
+            "per_node": per_node,
+        }
+    return block
+
+
+def guarantees_layer(
+    records: list[DecisionRecord],
+    *,
+    shock_periods: tuple[int, ...] = (),
+    target: DetectorTarget | None = None,
+) -> dict[str, Any]:
+    """Realized coverage, detection delay, saturation and the ε_t record.
+
+    ``coverage_error`` is the realized flag rate minus the declared target
+    level (0.10 in every arm), not minus the mean of the adapted level ε_t:
+    the claim is about the rate the detector was asked for. The trajectory of
+    ε_t is reported per node so it can be shown on its own, together with how
+    often and for how long it sat on its clip bounds. The change martingale's
+    1/δ is a declaration threshold only; its false-alarm rate is measured on
+    the stationary null line, not claimed.
     """
+    target = target or DetectorTarget()
     scored = [r for r in records if r.conformal.active]
     if not scored:
         return {
@@ -241,17 +328,25 @@ def guarantees_layer(
         "warmup_decisions": len(records) - total,
         "ood_rate": round(realized, 6),
         "mean_nominal_level": round(nominal_level, 6),
-        # CCR in the protocol's terms: realized miscoverage minus nominal.
-        "coverage_error": round(realized - nominal_level, 6),
+        "target_level": target.target_level,
+        # Realized flag rate minus the declared target.
+        "coverage_error": round(realized - target.target_level, 6),
         # The magnitude, which is what a claim of the form "coverage stays
-        # within e of nominal" is actually about. Kept as a separate indicator
-        # because a directional test on the signed error rewards undershooting
-        # the nominal level, which is worse coverage rather than better: the
-        # sign must not be the thing a hypothesis optimizes.
-        "abs_coverage_error": round(abs(realized - nominal_level), 6),
+        # within e of the target" is actually about. Kept as a separate
+        # indicator because a directional test on the signed error rewards
+        # undershooting, which is worse coverage rather than better: the sign
+        # must not be the thing a hypothesis optimizes.
+        "abs_coverage_error": round(abs(realized - target.target_level), 6),
+        # Against the mean adapted level, kept for comparison with v1.
+        "coverage_error_vs_mean_level": round(realized - nominal_level, 6),
         "mean_nonconformity": round(sum(r.conformal.score for r in scored) / total, 6),
         "mean_threshold": round(sum(r.conformal.threshold or 0.0 for r in scored) / total, 6),
         "change_declarations": sum(1 for r in scored if r.conformal.change_declared),
+        "change_declared_by_node": {
+            node: any(r.conformal.change_declared for r in scored if r.node_id == node)
+            for node in sorted({r.node_id for r in scored})
+        },
+        "epsilon": _epsilon_block(scored, target),
     }
 
     # A detector that flags nearly everything, or nothing at all, is not
@@ -265,7 +360,9 @@ def guarantees_layer(
     # against a nominal 0.1. Both directions make the guarantee vacuous, so
     # both are named.
     layer["under_flagging"] = bool(
-        total > 20 and realized < nominal_level / 2 and abs(realized - nominal_level) > 0.05
+        total > 20
+        and realized < target.target_level / 2
+        and abs(realized - target.target_level) > 0.05
     )
     layer["coverage_honest"] = not (layer["saturated"] or layer["under_flagging"])
 
@@ -454,6 +551,7 @@ def compute_kpis(
     shock_periods: tuple[int, ...] = (),
     specification: Specification | None = None,
     horizon_lookahead: int = 1,
+    detector_target: DetectorTarget | None = None,
 ) -> dict[str, Any]:
     """Assemble all six layers for one run, plus the envelope log.
 
@@ -467,7 +565,9 @@ def compute_kpis(
         "operational": operational,
         "systemic_risk": systemic_risk_layer(result, shock_periods=shock_periods),
         "xai": xai_layer(result.records),
-        "guarantees": guarantees_layer(result.records, shock_periods=shock_periods),
+        "guarantees": guarantees_layer(
+            result.records, shock_periods=shock_periods, target=detector_target
+        ),
         "governance": governance,
         "per_echelon": per_echelon_layer(result.records),
         "organizational_value": value_layer(operational, governance),

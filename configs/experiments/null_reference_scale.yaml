@@ -1,0 +1,16 @@
+# Detector null line (decision 6): the detector of high_vol_reference_scale
+# (frozen dispersion estimate) on stationary customer demand. As null_adaptive,
+# with the reference-scale score.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/demand_stable.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/causal.yaml
+  - configs/verification/shield_on.yaml
+  - configs/conformal/aci_reference_scale.yaml
+
+experiment:
+  name: null_reference_scale
+  periods: 60
+  master_seed: 20261104

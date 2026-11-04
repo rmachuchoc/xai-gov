@@ -1,0 +1,17 @@
+# Detector null line (decision 6): the detector of high_vol_shielded on
+# stationary customer demand. Same network, policy, governance, descriptor and
+# shield, with demand_stable in place of high_volatility and no disruptions, so
+# every change the martingale declares is a false alarm at the retailer.
+# Upstream nodes see orders, not customer demand, and are reported separately.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/demand_stable.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/causal.yaml
+  - configs/verification/shield_on.yaml
+
+experiment:
+  name: null_adaptive
+  periods: 60
+  master_seed: 20261104
