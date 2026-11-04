@@ -5,14 +5,22 @@
 # beta, the retailer fill rate, at a declared effect of 0.05. The number of
 # replicates comes from the simulated power of this exact procedure on a short
 # pilot of the new engine, and the base seed is new: no cell is reused from the
-# v1 campaign, which is now the pilot. Replicates and seed are fixed when the
-# plan is sealed (step 4); nothing here may change after that.
+# v1 campaign, which is now the pilot. Replicates, seed and design below are
+# part of the seal (specs/v2/confirmatory_v2.seal.json); nothing here may
+# change after sealing without a recorded amendment.
 #
 # The descriptor comparisons and the detector ablations of v1 are exploratory
 # in v2 and are not listed here.
 campaign: confirmatory_v2
 alpha: 0.05
 minimum_replicates: 30
+# From the simulated power (specs/v2/power_v2.json): 357 replicates give power
+# 0.80 for every hypothesis at the pilot's dispersion; 500 keep it if the true
+# dispersion of H5 is at the upper end of the pilot's 95% interval (491).
+replicates: 500
+# New: distinct from the v1 campaign (20260703), the v2 pilot (20261105), the
+# power simulation (20261106) and the detector null line (20261104).
+base_seed: 20261107
 
 arms:
   projection: configs/experiments/high_vol_shielded.yaml
@@ -96,6 +104,63 @@ hypotheses:
     rationale: >-
       Beta over periods 27 to 59 only, after the detector's burn-in (12) and
       warm-up (15). Rules out an effect produced only by the start-up transient.
+
+design:
+  test:
+    procedure: predictable aGRAPA e-process (Waudby-Smith and Ramdas, 2024)
+    bet: lambda_t = clip(mu_{t-1} / (sigma2_{t-1} + mu_{t-1}^2), 0, 1/2)
+    plug_ins: past differences only; prior mean 0, prior variance 1, weight one observation
+    scale: 1.0
+    scale_rationale: beta lies in [0, 1], so paired differences lie in [-1, 1]
+    two_sided: average of the bets on d and on -d
+    hypotheses: 6
+    familywise_threshold: 240
+    decision: reject at the first replicate whose e-value reaches 240
+    pairing: arms share the replicate seed; differences are within the replicate
+  effect: 0.05
+  target_power: 0.80
+  power:
+    report: specs/v2/power_v2.json
+    report_hash: 3b90a8b77f7f74f6d9aef4c2af8cc63d8f71eee4b250c16e34f2bc6dbdb63b42
+    required_n_by_hypothesis: {H1: 249, H2: 251, H3: 281, H4: 275, H5: 357, H6: 286}
+    binding_hypothesis: H5
+    power_seed: 20261106
+  pilot:
+    report: specs/v2/pilot_v2.json
+    report_hash: 6c77acc905367ea30c77b47557dea33a1f8877cdc86d9e452b4d14a57c3dd437
+    base_seed: 20261105
+    replicates: 30
+    status: dispersion only; no pilot cell is reused
+  seeds_not_to_reuse: [20260703, 20261104, 20261105, 20261106]
+  startup_periods: 27
+  envelope:
+    claim: specification-derived operating approximation, not a PCTL guarantee
+    bounds: {SAFE-1: 0.05, SAFE-2: 0.20, SAFE-3: 0.02}
+    unit: replicate
+    trial: violation at one (node, start) drawn uniformly with a seed derived from the replicate seed
+    interval: Clopper-Pearson 95%
+    also_reported: infeasible states (lower bound above upper bound)
+  detector:
+    coverage_error: realized flag rate minus 0.10
+    martingale: no Ville bound claimed; false alarms measured on the null line
+    null_line: configs/analysis/detector_null.yaml (200 stationary runs per detector, seed 20261104)
+  exploratory:
+    - the causal descriptor comparisons (v1 RQ3)
+    - the detector ablations (v1 RQ6, RQ6b, RQ6c, RQ6d)
+    - shield versus no shield (v1 RQ8)
+  decision_rules:
+    - when: H1 supported and H3 shows no difference
+      claim: what matters is that substitution is admissible, not that it is minimal
+      title: "Admissible Substitution, Not Projection…"
+    - when: H1 supported and H3 favours projection
+      claim: minimal correction adds value beyond admissibility
+      title: kept
+    - when: H1 supported and H3 favours the backup fallback
+      claim: the general lesson is to avoid the inadmissible fallback
+      title: reformulated
+    - when: H1 not supported
+      claim: the v1 effect was an artefact of the engine defects
+      title: decided with the coauthors
 
 exclusion_criteria:
   - runs whose decision log fails hash-chain verification

@@ -79,6 +79,13 @@ class Preregistration:
         "runs that aborted before completing their declared horizon",
     )
     notes: str = ""
+    #: Fixed in the plan from v2 on: the replicate count the power simulation
+    #: justified, the campaign's base seed, and the design commitments (test
+    #: procedure, decision rules, hashes of the pilot and power reports). Left
+    #: out of the payload when absent, so plans sealed before v2 keep their hash.
+    replicates: int | None = None
+    base_seed: int | None = None
+    design: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not self.hypotheses:
@@ -92,6 +99,11 @@ class Preregistration:
             raise ValueError("alpha must lie in (0, 1)")
         if self.minimum_replicates < 2:
             raise ValueError("minimum_replicates must be at least 2")
+        if self.replicates is not None and self.replicates < self.minimum_replicates:
+            raise ValueError(
+                f"the plan fixes {self.replicates} replicates, below its own minimum "
+                f"of {self.minimum_replicates}"
+            )
 
     @property
     def plan_hash(self) -> str:
@@ -112,7 +124,7 @@ class Preregistration:
         return tuple(sorted(named))
 
     def to_payload(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "campaign": self.campaign,
             "alpha": self.alpha,
             "minimum_replicates": self.minimum_replicates,
@@ -120,6 +132,13 @@ class Preregistration:
             "exclusion_criteria": list(self.exclusion_criteria),
             "notes": self.notes,
         }
+        if self.replicates is not None:
+            payload["replicates"] = self.replicates
+        if self.base_seed is not None:
+            payload["base_seed"] = self.base_seed
+        if self.design is not None:
+            payload["design"] = self.design
+        return payload
 
     def seal(self, path: Path, *, amend: bool = False) -> str:
         """Write the plan and return its hash.
@@ -244,6 +263,13 @@ def build_preregistration(config: dict[str, Any]) -> Preregistration:
     for key in ("alpha", "minimum_replicates", "notes"):
         if key in config:
             kwargs[key] = config[key]
+    for key in ("replicates", "base_seed"):
+        if key in config:
+            kwargs[key] = int(config[key])
+    if "design" in config:
+        if not isinstance(config["design"], dict):
+            raise ValueError("the plan's 'design' must be a mapping")
+        kwargs["design"] = config["design"]
     if "exclusion_criteria" in config:
         kwargs["exclusion_criteria"] = tuple(str(c) for c in config["exclusion_criteria"])
 
