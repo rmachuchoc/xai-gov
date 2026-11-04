@@ -188,6 +188,11 @@ class DirectionalEvidence:
     observations: int
     forward_null: str
     reverse_null: str | None
+    #: The e-values at the last replicate. ``forward``/``reverse`` are the
+    #: running maxima, which the first-crossing rule decides on.
+    forward_final: float | None = None
+    reverse_final: float | None = None
+    procedure: str = "aGRAPA"
 
     @property
     def supported(self) -> bool:
@@ -218,8 +223,15 @@ class DirectionalEvidence:
 
     def to_payload(self) -> dict[str, Any]:
         return {
+            "procedure": self.procedure,
             "forward_e_value": round(self.forward, 6),
             "reverse_e_value": None if self.reverse is None else round(self.reverse, 6),
+            "forward_final_e_value": (
+                None if self.forward_final is None else round(self.forward_final, 6)
+            ),
+            "reverse_final_e_value": (
+                None if self.reverse_final is None else round(self.reverse_final, 6)
+            ),
             "per_comparison_threshold": round(self.threshold, 4),
             "familywise_threshold": round(self.familywise_threshold, 4),
             "observations": self.observations,
@@ -243,8 +255,15 @@ def directional_evidence(
     hypotheses: int = 1,
     two_sided: bool = False,
     indicator: str = "the indicator",
+    scale: float = 1.0,
 ) -> DirectionalEvidence:
-    """Run the martingale forward and, for a directional claim, backward.
+    """Run the aGRAPA e-process forward and, for a directional claim, backward.
+
+    The e-process is the predictable aGRAPA bet of `analysis.agrapa`, on
+    differences scaled by the declared range ``scale``. ``forward`` and
+    ``reverse`` are the running maxima: the plan rejects at the first replicate
+    whose e-value reaches the familywise threshold, which Ville's inequality
+    makes valid at any stopping time.
 
     ``differences`` are already oriented so that positive values support the
     prediction. The reverse test is the same construction on their negation,
@@ -276,20 +295,20 @@ def directional_evidence(
     if not differences:
         raise ValueError("cannot test an empty set of differences")
 
-    scale = 1.0  # predeclared: indicators lie in [0, 1], so paired differences lie in [-1, 1]
+    from xai_gov.analysis.agrapa import familywise_threshold, run_e_process
 
-    def run(values: list[float]) -> float:
-        martingale = MeanShiftMartingale(alpha=alpha, scale=scale)
-        for value in values:
-            martingale.update(value)
-        return martingale.value
-
-    if two_sided:
-        forward = 0.5 * (run(differences) + run([-value for value in differences]))
-        reverse = None
-    else:
-        forward = run(differences)
-        reverse = run([-value for value in differences])
+    threshold = familywise_threshold(hypotheses=hypotheses, alpha=alpha)
+    forward_path = run_e_process(
+        differences, two_sided=two_sided, scale=scale, threshold=threshold
+    )
+    forward, forward_final = forward_path.peak, forward_path.final
+    reverse: float | None = None
+    reverse_final: float | None = None
+    if not two_sided:
+        reverse_path = run_e_process(
+            [-value for value in differences], scale=scale, threshold=threshold
+        )
+        reverse, reverse_final = reverse_path.peak, reverse_path.final
 
     return DirectionalEvidence(
         forward=forward,
@@ -305,6 +324,8 @@ def directional_evidence(
         reverse_null=(
             None if two_sided else f"no difference or the predicted effect on {indicator}"
         ),
+        forward_final=forward_final,
+        reverse_final=reverse_final,
     )
 
 

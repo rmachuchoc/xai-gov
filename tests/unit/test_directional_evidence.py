@@ -36,7 +36,9 @@ def test_a_predicted_effect_is_supported_in_the_forward_direction() -> None:
 def test_a_small_forward_value_alone_does_not_refute() -> None:
     """The error, prevented. A lost bet is not a claim about the other side."""
     evidence = directional_evidence(rising(-0.02, sd=0.3), alpha=0.05, hypotheses=7)
-    assert evidence.forward < 1.0
+    # forward is the running maximum, which starts at 1; the lost bet shows in
+    # the value at the last replicate.
+    assert evidence.forward_final is not None and evidence.forward_final < 1.0
     # Small forward, small reverse: nothing established either way.
     assert evidence.supported is False
     assert evidence.refuted is False
@@ -47,7 +49,9 @@ def test_the_opposite_direction_needs_its_own_e_value() -> None:
     """A large effect against the prediction is established by the reverse
     test, not inferred from the forward one being small."""
     evidence = directional_evidence(rising(-0.55), alpha=0.05, hypotheses=7)
-    assert evidence.forward < 1.0
+    # aGRAPA does not bet while the estimated mean is at or below the null
+    # boundary, so against an opposite effect the forward wealth stays at 1.
+    assert evidence.forward_final is not None and evidence.forward_final <= 1.0
     assert evidence.reverse is not None
     assert evidence.reverse >= evidence.familywise_threshold
     assert evidence.refuted is True
@@ -127,7 +131,8 @@ def test_a_two_sided_test_does_not_find_an_effect_in_noise() -> None:
     rng = random.Random(11)
     crossings_pooled = crossings_magnitude = 0
     for _ in range(200):
-        noise = [rng.gauss(0.0, 1.0) for _ in range(60)]
+        # Inside the declared range: aGRAPA refuses a difference beyond it.
+        noise = [max(-1.0, min(1.0, rng.gauss(0.0, 0.4))) for _ in range(60)]
         pooled = directional_evidence(noise, alpha=0.05, two_sided=True)
         magnitude = directional_evidence(
             [abs(v) for v in noise], alpha=0.05, two_sided=False
