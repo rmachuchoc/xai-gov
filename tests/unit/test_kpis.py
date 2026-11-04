@@ -142,3 +142,24 @@ def test_unrecovered_shock_reports_none_rather_than_the_horizon() -> None:
     result = SimulationResult(periods=8, traces=traces)
     layer = compute_kpis(result, shock_periods=(4,))["systemic_risk"]
     assert layer["recovery_periods"] is None
+
+
+def test_the_post_startup_fill_rate_ignores_the_first_27_periods() -> None:
+    """H6: beta over periods 27 onward only."""
+    from xai_gov.kpis.layers import STARTUP_PERIODS, operational_layer
+    from xai_gov.simulation.engine import PeriodTrace, SimulationResult
+
+    def trace(period: int, served: float) -> PeriodTrace:
+        return PeriodTrace(
+            period=period, demand_total=10.0, served_total=served, orders_total=0.0,
+            inventory_total=0.0, backlog_total=0.0, stocked_out_nodes=0, holding_cost=0.0,
+            backlog_cost=0.0, order_cost=0.0, intervention_cost=0.0,
+        )
+
+    traces = [trace(t, 0.0 if t < STARTUP_PERIODS else 8.0) for t in range(60)]
+    layer = operational_layer(SimulationResult(periods=60, traces=traces))
+    assert STARTUP_PERIODS == 27
+    assert layer["fill_rate_after_startup"] == 0.8
+    assert layer["fill_rate"] == round(8.0 * 33 / 600, 6)
+    short = operational_layer(SimulationResult(periods=20, traces=traces[:20]))
+    assert short["fill_rate_after_startup"] is None

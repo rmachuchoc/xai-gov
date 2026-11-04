@@ -31,6 +31,11 @@ def _variance(values: list[float]) -> float:
     return sum((value - mean) ** 2 for value in values) / (len(values) - 1)
 
 
+#: H6 of the revision: β with the start-up excluded. The detector's burn-in (12)
+#: and warm-up (15) end at period 27; before that mediation has no signal.
+STARTUP_PERIODS = 27
+
+
 def _safe_ratio(numerator: float, denominator: float, *, default: float = 0.0) -> float:
     return numerator / denominator if denominator > 0.0 else default
 
@@ -54,8 +59,22 @@ def operational_layer(result: SimulationResult) -> dict[str, Any]:
     fully_served = sum(
         1 for t in traces if t.demand_total <= 0.0 or t.served_total >= t.demand_total - 1e-9
     )
+    after = [t for t in traces if t.period >= STARTUP_PERIODS]
     return {
         "status": "available",
+        "fill_rate_after_startup": (
+            round(
+                _safe_ratio(
+                    sum(t.served_total for t in after),
+                    sum(t.demand_total for t in after),
+                    default=1.0,
+                ),
+                6,
+            )
+            if after
+            else None
+        ),
+        "startup_periods": STARTUP_PERIODS,
         "service_level": round(_safe_ratio(fully_served, periods, default=1.0), 6),
         "fill_rate": round(_safe_ratio(served, demand, default=1.0), 6),
         "unmet_demand": round(max(demand - served, 0.0), 6),

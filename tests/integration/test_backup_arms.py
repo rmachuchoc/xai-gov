@@ -61,3 +61,18 @@ def test_a_backup_arm_differs_from_its_projection_pair_only_in_the_operator(  # 
     assert left["experiment"]["master_seed"] == right["experiment"]["master_seed"]
     strip = {k: v for k, v in left["verification"].items() if k != "shield_mode"}
     assert strip == {k: v for k, v in right["verification"].items() if k != "shield_mode"}
+
+
+def test_the_five_echelon_fallback_differs_from_projection_only_in_the_operator(  # type: ignore[no-untyped-def]
+    settings, project_root: Path
+) -> None:
+    experiments = project_root / "configs/experiments"
+    left = plan_experiment(experiments / "five_fallback_shield.yaml", settings=settings).config
+    right = plan_experiment(experiments / "five_shielded.yaml", settings=settings).config
+    assert left["verification"]["shield_mode"] == "fallback"
+    assert set(left) == set(right)
+    for section in set(left) - {"verification", "experiment"}:
+        assert left[section] == right[section], section
+    assert {k: v for k, v in left["verification"].items() if k != "shield_mode"} == {
+        k: v for k, v in right["verification"].items() if k != "shield_mode"
+    }

@@ -1,0 +1,108 @@
+# The confirmatory campaign of v2 (review make-4658289, decision 5).
+#
+# Six confirmatory hypotheses, k = 6, tested with the predictable aGRAPA
+# e-process at the familywise threshold 2k/alpha = 240. Every hypothesis is on
+# beta, the retailer fill rate, at a declared effect of 0.05. The number of
+# replicates comes from the simulated power of this exact procedure on a short
+# pilot of the new engine, and the base seed is new: no cell is reused from the
+# v1 campaign, which is now the pilot. Replicates and seed are fixed when the
+# plan is sealed (step 4); nothing here may change after that.
+#
+# The descriptor comparisons and the detector ablations of v1 are exploratory
+# in v2 and are not listed here.
+campaign: confirmatory_v2
+alpha: 0.05
+minimum_replicates: 30
+
+arms:
+  projection: configs/experiments/high_vol_shielded.yaml
+  fallback: configs/experiments/high_vol_fallback_shield.yaml
+  backup: configs/experiments/high_vol_backup_shield.yaml
+  q_projection: configs/experiments/q_projection.yaml
+  q_fallback: configs/experiments/q_fallback.yaml
+  governed: configs/experiments/high_vol_governed_h2.yaml
+  ungoverned: configs/experiments/high_vol_ungoverned.yaml
+  five_projection: configs/experiments/five_shielded.yaml
+  five_fallback: configs/experiments/five_fallback_shield.yaml
+
+hypotheses:
+  - id: H1
+    question: >-
+      With the fixed policy, does the projection shield attain a higher fill rate
+      than the inadmissible null fallback (F-null)?
+    indicator: operational.fill_rate
+    treatment: projection
+    control: fallback
+    direction: greater
+    predicted_effect: 0.05
+    rationale: >-
+      The central effect of v1, re-measured on the corrected engine. F-null
+      replaces an inadmissible order by zero even when zero is itself
+      inadmissible, so it can hold the chain in the unsafe region.
+
+  - id: H2
+    question: Does H1 hold with the Q-learning policy?
+    indicator: operational.fill_rate
+    treatment: q_projection
+    control: q_fallback
+    direction: greater
+    predicted_effect: 0.05
+    rationale: The same comparison with a learned policy in place of the fixed one.
+
+  - id: H3
+    question: >-
+      Does the projection shield differ in fill rate from the admissible backup
+      fallback (F-backup)?
+    indicator: operational.fill_rate
+    treatment: projection
+    control: backup
+    direction: different
+    predicted_effect: 0.05
+    rationale: >-
+      Separates minimal correction from admissibility. Two-sided because either
+      result decides the scenario: no difference means admissibility is what
+      matters; a difference says which operator adds value.
+
+  - id: H4
+    question: >-
+      Does mediation without a shield change the fill rate relative to no
+      supervision, over the same horizon?
+    indicator: operational.fill_rate
+    treatment: governed
+    control: ungoverned
+    direction: different
+    predicted_effect: 0.05
+    rationale: >-
+      RQ4 of v1, which compared 60 governed periods with 40 ungoverned ones.
+      Both arms now run 60 periods. Two-sided: with the horizon corrected there
+      is no defensible directional prediction.
+
+  - id: H5
+    question: Does H1 replicate on the five-echelon chain?
+    indicator: operational.fill_rate
+    treatment: five_projection
+    control: five_fallback
+    direction: greater
+    predicted_effect: 0.05
+    rationale: Topology invariance of the central effect.
+
+  - id: H6
+    question: Does H1 hold once the start-up periods are excluded?
+    indicator: operational.fill_rate_after_startup
+    treatment: projection
+    control: fallback
+    direction: greater
+    predicted_effect: 0.05
+    rationale: >-
+      Beta over periods 27 to 59 only, after the detector's burn-in (12) and
+      warm-up (15). Rules out an effect produced only by the start-up transient.
+
+exclusion_criteria:
+  - runs whose decision log fails hash-chain verification
+  - runs whose conformal detector reports saturation
+  - runs that aborted before completing their declared horizon
+
+notes: >-
+  Arms share seeds by replicate, so every comparison is paired on the same
+  demand path and disruption schedule, and each replicate carries its own seed,
+  so the paired differences are i.i.d. across replicates.

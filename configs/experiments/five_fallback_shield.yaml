@@ -1,0 +1,15 @@
+# H5 control: five_shielded with the fallback operator (F-null). Same network,
+# demand, policy, oversight agent, descriptor, specification and seeds; only the
+# operator that replaces an inadmissible action differs.
+_include_:
+  - configs/network/five_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/causal.yaml
+  - configs/verification/shield_fallback.yaml
+
+experiment:
+  name: five_fallback_shield
+  periods: 60
+  master_seed: 20260703
