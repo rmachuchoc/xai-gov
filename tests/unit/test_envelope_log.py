@@ -141,3 +141,43 @@ def test_the_layer_names_its_claim_and_reports_every_property() -> None:
 
 def test_no_records_means_not_available() -> None:
     assert envelope_layer([])["status"] == "not_available"
+
+
+# -- one trial per replicate ------------------------------------------------------
+def test_a_replicate_trial_is_deterministic_in_its_seed() -> None:
+    from xai_gov.verification.envelope_log import replicate_trial
+
+    by_start = {"r": [0, 1, 0, 1], "d": [1, 1, 0]}
+    assert replicate_trial(by_start, seed=7) == replicate_trial(by_start, seed=7)
+    assert replicate_trial({}, seed=7) is None
+    assert replicate_trial({"r": []}, seed=7) is None
+
+
+def test_the_trial_is_unbiased_for_the_pooled_frequency() -> None:
+    """Every (node, start) pair is equally likely to be drawn."""
+    from xai_gov.verification.envelope_log import replicate_trial
+
+    by_start = {"r": [0, 1, 0, 0], "d": [1, 1, 0, 0, 0, 0]}  # 3 of 10
+    draws = [replicate_trial(by_start, seed=s) for s in range(20000)]
+    assert sum(d or 0 for d in draws) / len(draws) == pytest.approx(0.3, abs=0.015)
+
+
+def test_the_campaign_interval_counts_replicates_not_periods() -> None:
+    from xai_gov.verification.envelope_log import campaign_envelope
+
+    def layer(flags: list[int]) -> dict:  # type: ignore[type-arg]
+        return {
+            "status": "available",
+            "properties": {"SAFE-3": {"bound": 0.02, "violations": sum(flags),
+                                      "trials": len(flags), "by_start": {"r": flags}}},
+            "infeasible": {"violations": 0, "trials": len(flags)},
+        }
+
+    cells = [(seed, layer([1] * 50)) for seed in range(40)]
+    result = campaign_envelope(cells)
+    entry = result["properties"]["SAFE-3"]
+    assert result["replicates"] == 40
+    assert (entry["unit"], entry["trials"], entry["violations"]) == ("replicate", 40, 40)
+    assert entry["verdict"] == "exceeds_bound"
+    assert entry["pooled_descriptive"]["trials"] == 2000
+    assert result["infeasible"]["runs_with_infeasible_states"]["violations"] == 0

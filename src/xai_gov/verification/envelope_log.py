@@ -21,9 +21,13 @@ Path semantics, for a property with horizon h on one node's trace s_0..s_{T-1}:
 * eventually (``F bad``): violated at start t if ``bad`` holds at some s ≥ t
   before the horizon ends; right-censored at the end of the run.
 
-Overlapping starts on one trace are not independent, so a pooled interval is
-narrower than the dependence warrants. The counts are reported raw so that the
-campaign can choose its unit of replication.
+Overlapping starts on one trace are not independent, so the pooled interval of a
+single run is descriptive only. The campaign's interval takes the replicate as
+the unit (`replicate_trial` and `campaign_envelope`): each replicate contributes
+one Bernoulli trial, the violation indicator at one node and one start drawn
+uniformly with a seed derived from the replicate's own seed. Replicates are
+i.i.d., so the Clopper–Pearson interval over them is exact, and the trial's
+success probability is the expected pooled frequency.
 """
 
 from __future__ import annotations
@@ -125,27 +129,32 @@ def verdict(ci_low: float, ci_high: float, bound: float) -> str:
 
 
 # -- path formulas on one trace ------------------------------------------------
+def violation_by_start(
+    trace: Sequence[OperatingState], prop: SafetyProperty
+) -> list[bool]:
+    """Whether the property is violated from each evaluable start period."""
+    bad = [PREDICATES[prop.predicate](state) for state in trace]
+    if prop.operator is Operator.EVENTUALLY:
+        flags: list[bool] = []
+        seen = False
+        for value in reversed(bad):
+            seen = seen or value
+            flags.append(seen)
+        return flags[::-1]
+    horizon = prop.horizon
+    starts = len(bad) - horizon + 1
+    if starts <= 0:
+        return []
+    combine = all if prop.operator is Operator.PERSISTENT else any
+    return [combine(bad[t : t + horizon]) for t in range(starts)]
+
+
 def property_trials(
     trace: Sequence[OperatingState], prop: SafetyProperty
 ) -> tuple[int, int]:
     """(violations, evaluable starts) of one property on one node's trace."""
-    bad = [PREDICATES[prop.predicate](state) for state in trace]
-    length = len(bad)
-    if prop.operator is Operator.EVENTUALLY:
-        violations = 0
-        seen = False
-        for value in reversed(bad):
-            seen = seen or value
-            violations += int(seen)
-        return violations, length
-
-    horizon = prop.horizon
-    starts = length - horizon + 1
-    if starts <= 0:
-        return 0, 0
-    combine = all if prop.operator is Operator.PERSISTENT else any
-    violations = sum(1 for t in range(starts) if combine(bad[t : t + horizon]))
-    return violations, starts
+    flags = violation_by_start(trace, prop)
+    return sum(flags), len(flags)
 
 
 def _rates(violations: int, trials: int, bound: float | None = None) -> dict[str, Any]:
@@ -212,13 +221,19 @@ def envelope_layer(
 
     properties: dict[str, Any] = {}
     for prop in specification:
-        per_node = {node: property_trials(trace, prop) for node, trace in traces.items()}
-        violations = sum(v for v, _ in per_node.values())
-        trials = sum(n for _, n in per_node.values())
+        flags = {node: violation_by_start(trace, prop) for node, trace in traces.items()}
+        violations = sum(sum(f) for f in flags.values())
+        trials = sum(len(f) for f in flags.values())
         properties[prop.property_id] = {
             "formula": prop.formula(),
+            # Pooled over starts and nodes: descriptive only, since overlapping
+            # starts on one trace are dependent. The campaign's interval uses
+            # one trial per replicate drawn from ``by_start``.
             **_rates(violations, trials, prop.bound),
-            "per_node": {node: _rates(v, n, prop.bound) for node, (v, n) in per_node.items()},
+            "per_node": {
+                node: _rates(sum(f), len(f), prop.bound) for node, f in flags.items()
+            },
+            "by_start": {node: [int(v) for v in f] for node, f in flags.items()},
         }
 
     infeasible = infeasible_counts(traces, specification, horizon_lookahead=horizon_lookahead)
@@ -232,5 +247,76 @@ def envelope_layer(
         "infeasible": {
             **_rates(infeasible_total, states_total),
             "per_node": {node: _rates(v, n) for node, (v, n) in infeasible.items()},
+        },
+    }
+
+
+# -- the campaign: one trial per replicate --------------------------------------
+def replicate_trial(by_start: dict[str, list[int]], *, seed: int) -> int | None:
+    """One Bernoulli trial: a node and a start drawn uniformly, with ``seed``.
+
+    Every evaluable (node, start) pair is equally likely, so the trial's success
+    probability equals the run's expected pooled violation frequency.
+    """
+    import random
+
+    pairs = [(node, t) for node, flags in sorted(by_start.items()) for t in range(len(flags))]
+    if not pairs:
+        return None
+    node, t = random.Random(seed).choice(pairs)
+    return int(by_start[node][t])
+
+
+def campaign_envelope(
+    cells: Sequence[tuple[int, dict[str, Any]]],
+) -> dict[str, Any]:
+    """Per-property intervals over replicates for one arm.
+
+    ``cells`` holds (replicate seed, envelope layer) pairs. The trial seed is
+    derived from the replicate seed and the property id, so it does not depend
+    on the arm and two arms of one replicate draw the same (node, start) where
+    their nodes coincide.
+    """
+    from xai_gov.core.seeds import derive_seed
+
+    available = [(seed, layer) for seed, layer in cells if layer.get("status") == "available"]
+    if not available:
+        return {"status": "not_available", "requires": "envelope layers from the cells"}
+    property_ids = sorted(available[0][1]["properties"])
+    properties: dict[str, Any] = {}
+    for property_id in property_ids:
+        bound = float(available[0][1]["properties"][property_id]["bound"])
+        trials = [
+            replicate_trial(
+                layer["properties"][property_id]["by_start"],
+                seed=derive_seed(seed, f"envelope::{property_id}"),
+            )
+            for seed, layer in available
+        ]
+        drawn = [t for t in trials if t is not None]
+        pooled_v = sum(layer["properties"][property_id]["violations"] for _, layer in available)
+        pooled_n = sum(layer["properties"][property_id]["trials"] for _, layer in available)
+        properties[property_id] = {
+            "unit": "replicate",
+            **_rates(sum(drawn), len(drawn), bound),
+            "pooled_descriptive": {
+                "violations": pooled_v,
+                "trials": pooled_n,
+                "frequency": round(pooled_v / pooled_n, 6) if pooled_n else None,
+            },
+        }
+    infeasible_v = sum(layer["infeasible"]["violations"] for _, layer in available)
+    infeasible_n = sum(layer["infeasible"]["trials"] for _, layer in available)
+    runs_with_infeasible = sum(1 for _, layer in available if layer["infeasible"]["violations"])
+    return {
+        "status": "available",
+        "claim": CLAIM,
+        "replicates": len(available),
+        "properties": properties,
+        "infeasible": {
+            "frequency": round(infeasible_v / infeasible_n, 6) if infeasible_n else None,
+            "states": infeasible_n,
+            "infeasible_states": infeasible_v,
+            "runs_with_infeasible_states": _rates(runs_with_infeasible, len(available)),
         },
     }

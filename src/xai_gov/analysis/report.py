@@ -164,6 +164,9 @@ class CampaignReport:
     cells: tuple[dict[str, Any], ...]
     hierarchical: dict[str, Any] = field(default_factory=dict)
     strategic: dict[str, Any] = field(default_factory=dict)
+    #: Per arm and property: violation frequency over replicates with a
+    #: Clopper-Pearson interval against the bound, and infeasible states.
+    envelope: dict[str, Any] = field(default_factory=dict)
 
     def to_payload(self) -> dict[str, Any]:
         supported = [h.hypothesis_id for h in self.hypotheses if h.supported]
@@ -184,6 +187,7 @@ class CampaignReport:
             "frontier": self.frontier,
             "hierarchical": self.hierarchical,
             "strategic": self.strategic,
+            "envelope": self.envelope,
             "cells": list(self.cells),
             "multiplicity": {
                 "hypotheses": len(self.hypotheses),
@@ -282,6 +286,19 @@ def run_campaign(
                 name: sum(values) / len(values) for name, values in collected.items()
             }
 
+    from xai_gov.verification.envelope_log import campaign_envelope
+
+    envelope = {
+        arm: campaign_envelope(
+            [
+                (r.cell.seed, r.kpis.get("envelope") or {})
+                for r in results
+                if r.included and r.cell.arm == arm
+            ]
+        )
+        for arm in sorted(arms)
+    }
+
     seal_status = (
         verify_seal(plan, sealed_hash).to_payload()
         if sealed_hash is not None
@@ -298,6 +315,7 @@ def run_campaign(
         hypotheses=hypotheses,
         frontier=compute_frontier(arm_values).to_payload(),
         cells=tuple(result.to_payload() for result in results),
+        envelope=envelope,
         hierarchical=_decompose_indicators(results),
         strategic=_strategic_indicators(results, arms),
     )
