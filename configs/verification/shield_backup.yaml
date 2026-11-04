@@ -1,0 +1,11 @@
+# F-backup: the same specification and envelope as shield_on, with the backup
+# operator. An action outside the admissible envelope is replaced by a
+# base-stock order up to S = s + Q of the node, computed from the same observed
+# state, and clamped to the envelope. Unlike the fallback (F-null), the
+# replacement is admissible by construction, so the comparison with projection
+# isolates minimal correction from admissibility.
+_include_:
+  - configs/verification/shield_on.yaml
+
+verification:
+  shield_mode: backup

@@ -1,0 +1,16 @@
+# H3 control, fixed policy: high_vol_shielded with the backup operator (F-backup).
+# Same network, demand, oversight agent, descriptor, specification and seeds as
+# its projection counterpart; only the operator that replaces an inadmissible
+# action differs.
+_include_:
+  - configs/network/three_echelon.yaml
+  - configs/scenarios/high_volatility.yaml
+  - configs/policies/opaque_dro.yaml
+  - configs/governance/cpomdp_h2.yaml
+  - configs/explainability/causal.yaml
+  - configs/verification/shield_backup.yaml
+
+experiment:
+  name: high_vol_backup_shield
+  periods: 60
+  master_seed: 20260703

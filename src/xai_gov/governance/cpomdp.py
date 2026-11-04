@@ -107,6 +107,8 @@ class CpomdpGovernanceAgent(GovernanceAgent):
         self._autonomy = AutonomyState(initial=AutonomyRegime(self.autonomy_regime))
         self._filters: dict[str, BeliefFilter] = {}
         self._period = 0
+        # The node being mediated: the backup shield reads its base-stock level.
+        self._spec: NodeSpec | None = None
         self.ledger = ComplementarityLedger()
         # A separate stream for the counterfactual human, so scoring the
         # baseline never perturbs the sequence the real supervisor draws from.
@@ -197,6 +199,7 @@ class CpomdpGovernanceAgent(GovernanceAgent):
         proposal: PolicyProposal,
     ) -> GovernanceVerdict:
         self._period = state.period
+        self._spec = spec
         self.budget.tick()
         # Monitors watch every period, governed or not. Instrumenting only the
         # shielded arm would make the two arms unobservable in the same terms,
@@ -413,7 +416,8 @@ class CpomdpGovernanceAgent(GovernanceAgent):
         exists for: a confidently-approved action that violates a property.
         """
         action, quantity, outcome = self.shield.filter(
-            state=state, action=proposal.action, quantity=proposal.quantity
+            state=state, action=proposal.action, quantity=proposal.quantity,
+            spec=self._spec,
         )
         self._record_outcome(
             regime=RiskRegime.NOMINAL,
@@ -471,7 +475,8 @@ class CpomdpGovernanceAgent(GovernanceAgent):
         quantity = proposal.quantity if judgement.approved else 0.0
         action = proposal.action if judgement.approved else ActionKind.HOLD
         action, quantity, outcome = self.shield.filter(
-            state=state, action=action, quantity=quantity, escalated=True
+            state=state, action=action, quantity=quantity, escalated=True,
+            spec=self._spec,
         )
 
         self.budget.charge(cost, self._period)
@@ -577,7 +582,8 @@ class CpomdpGovernanceAgent(GovernanceAgent):
         self.budget.charge(cost, self._period)
         self.budget.update_multiplier(self._period)
         final_action, final_quantity, outcome = self.shield.filter(
-            state=state, action=ActionKind.HOLD, quantity=0.0, escalated=escalated
+            state=state, action=ActionKind.HOLD, quantity=0.0, escalated=escalated,
+            spec=self._spec,
         )
         return GovernanceVerdict(
             action=action,

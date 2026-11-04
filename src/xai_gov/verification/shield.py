@@ -33,7 +33,7 @@ to support.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from xai_gov.core.logging import get_logger
 from xai_gov.io.decision_record import ActionKind, OperatingState, ShieldOutcome
@@ -44,7 +44,25 @@ from xai_gov.verification.specification import (
     TraceWindow,
 )
 
+if TYPE_CHECKING:
+    from xai_gov.simulation.network import NodeSpec
+
 _LOG = get_logger("verification.shield")
+
+SHIELD_MODES = ("projection", "fallback", "backup")
+
+
+def base_stock_order(spec: NodeSpec, state: OperatingState) -> float:
+    """The backup controller: order up to S = s + Q from the observed position.
+
+    S is the node's own declared reorder point plus lot size, so the backup is
+    fixed before any run, needs no tuning on results, and shares no logic with
+    the policies it replaces. The position is what the policy itself observes:
+    inventory + on order − backlog.
+    """
+    level = spec.reorder_point + spec.order_quantity
+    position = state.inventory + state.in_transit - state.backlog
+    return float(max(level - position, 0.0))
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,8 +107,10 @@ class Shield:
     max_order: float = 200.0
     #: How an action outside the admissible envelope is replaced.
     #: ``projection`` moves it to the nearest admissible quantity;
-    #: ``fallback`` replaces it with the null action whether or not the
-    #: null action is itself admissible. Same envelope, different operator.
+    #: ``fallback`` (F-null) replaces it with the null action whether or not
+    #: the null action is itself admissible; ``backup`` (F-backup) replaces it
+    #: with a base-stock order clamped to the envelope, so it is admissible by
+    #: construction. Same envelope, different operator.
     mode: str = "projection"
     fallback_inadmissible: int = 0
     activations: int = 0
@@ -105,10 +125,8 @@ class Shield:
     _window: TraceWindow = field(default_factory=TraceWindow, repr=False)
 
     def __post_init__(self) -> None:
-        if self.mode not in ("projection", "fallback"):
-            raise ValueError(
-                f"mode must be 'projection' or 'fallback', not {self.mode!r}"
-            )
+        if self.mode not in SHIELD_MODES:
+            raise ValueError(f"mode must be one of {SHIELD_MODES}, not {self.mode!r}")
         if self.horizon_lookahead < 1:
             raise ValueError("horizon_lookahead must be at least 1")
         if self.max_order <= 0.0:
@@ -201,8 +219,15 @@ class Shield:
         action: ActionKind,
         quantity: float,
         escalated: bool = False,
+        spec: NodeSpec | None = None,
     ) -> tuple[ActionKind, float, ShieldOutcome]:
-        """Return the action that may execute, and what the shield did."""
+        """Return the action that may execute, and what the shield did.
+
+        ``spec`` is required in ``backup`` mode, which reads the node's
+        declared base-stock level from it.
+        """
+        if self.mode == "backup" and spec is None:
+            raise ValueError("the backup shield needs the node spec to compute its order")
         self.decisions += 1
         self._window.append(state)
         envelope = self.envelope(state)
@@ -217,6 +242,9 @@ class Shield:
             substituted = 0.0
             if not envelope.contains(substituted):
                 self.fallback_inadmissible += 1
+        elif self.mode == "backup":
+            assert spec is not None  # checked on entry
+            substituted = envelope.clamp(base_stock_order(spec, state))
         else:
             substituted = envelope.clamp(quantity)
         delta = abs(substituted - quantity)
@@ -314,8 +342,9 @@ class NoShield:
         action: ActionKind,
         quantity: float,
         escalated: bool = False,
+        spec: NodeSpec | None = None,
     ) -> tuple[ActionKind, float, ShieldOutcome]:
-        del state, escalated
+        del state, escalated, spec
         self.decisions += 1
         return action, quantity, ShieldOutcome()
 
