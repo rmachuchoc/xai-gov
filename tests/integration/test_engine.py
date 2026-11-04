@@ -71,10 +71,17 @@ def test_a_different_seed_changes_the_trajectory() -> None:
     assert first.demand_series != other.demand_series
 
 
-def test_demand_enters_only_at_echelon_zero() -> None:
-    result = build(periods=8, network=three_echelon()).run()
-    upstream = [r for r in result.records if r.node_id != "retail"]
-    assert all(r.state.demand_observed == 0.0 for r in upstream)
+def test_upstream_demand_is_the_downstream_order_of_the_previous_period() -> None:
+    """Customer demand enters at echelon 0 only; upstream sees orders, one period late."""
+    result = build(periods=12, network=three_echelon(), policy=OpaqueDROPolicy()).run()
+    by_key = {(r.node_id, r.period): r for r in result.records}
+    for supplier, customer in (("dc", "retail"), ("plant", "dc")):
+        assert by_key[(supplier, 0)].state.demand_observed == 0.0
+        for period in range(1, 12):
+            assert by_key[(supplier, period)].state.demand_observed == pytest.approx(
+                by_key[(customer, period - 1)].final_quantity
+            )
+    assert any(by_key[("dc", period)].state.demand_observed > 0.0 for period in range(1, 12))
 
 
 def test_served_never_exceeds_demand_plus_backlog() -> None:

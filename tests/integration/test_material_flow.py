@@ -29,6 +29,7 @@ from xai_gov.kpis.layers import compute_kpis
 from xai_gov.policies.base import Policy, PolicyProposal
 from xai_gov.policies.families import HeuristicSQPolicy, OpaqueDROPolicy
 from xai_gov.simulation.demand import StableDemand
+from xai_gov.simulation.disruptions import Disruption, DisruptionKind, DisruptionSchedule
 from xai_gov.simulation.engine import DigitalTwin
 from xai_gov.simulation.network import EXTERNAL_SOURCE, NetworkSpec, NodeSpec
 
@@ -43,15 +44,6 @@ pytestmark = pytest.mark.integration
 
 TOL = 1e-9
 
-# Known defects of the v1 engine, confirmed by these tests. strict=True turns
-# an unexpected pass into a failure, so the markers must be removed in the
-# same commit that fixes the engine.
-R1_1 = pytest.mark.xfail(
-    strict=True, reason="R1.1: service level sums `served` over every node, not the retailer"
-)
-R1_2 = pytest.mark.xfail(
-    strict=True, reason="R1.2: a supplier backorder is served but never shipped downstream"
-)
 
 # The scripted scenario: the retailer places one order of 20 on a DC that
 # holds 12, so the DC is short by exactly 8 and must replenish from the plant.
@@ -117,11 +109,13 @@ def scripted_twin(periods: int) -> DigitalTwin:
     )
 
 
-def stochastic_twin(policy: Policy, seed: int) -> DigitalTwin:
+def stochastic_twin(
+    policy: Policy, seed: int, *, periods: int = 30, schedule: DisruptionSchedule | None = None
+) -> DigitalTwin:
     def node(node_id: str, echelon: int, supplier: str, **kwargs: float) -> NodeSpec:
         defaults: dict[str, float] = {
             "initial_inventory": 60.0, "capacity": 300.0, "reorder_point": 30.0,
-            "order_quantity": 40.0, "lead_time_mean": 2.0,
+            "order_quantity": 40.0, "lead_time_mean": 2.0, "lead_time_dispersion": 0.25,
         }
         return NodeSpec(
             node_id=node_id, echelon=echelon, supplier_id=supplier, **(defaults | kwargs)
@@ -141,7 +135,8 @@ def stochastic_twin(policy: Policy, seed: int) -> DigitalTwin:
         policy=policy,
         governance=NoGovernanceAgent(),
         seeds=SeedBundle(master_seed=seed),
-        periods=30,
+        periods=periods,
+        schedule=schedule,
     )
 
 
@@ -153,12 +148,7 @@ def customer_sales(twin: DigitalTwin) -> float:
 
 
 # -- 1. conservation ------------------------------------------------------------
-# The balance still holds when period 0 closes: the shortfall is consumed
-# at the DC from period 1 on.
-@pytest.mark.parametrize(
-    "periods",
-    [pytest.param(p, marks=() if p == 1 else (R1_2,)) for p in range(1, HORIZON + 1)],
-)
+@pytest.mark.parametrize("periods", range(1, HORIZON + 1))
 def test_material_is_conserved_at_the_end_of_every_period(periods: int) -> None:
     """Initial stock = stock at nodes + in transit + sales (no production here).
 
@@ -179,6 +169,38 @@ def test_material_is_conserved_at_the_end_of_every_period(periods: int) -> None:
     )
 
 
+DISRUPTED = DisruptionSchedule(
+    disruptions=(
+        Disruption(kind=DisruptionKind.CAPACITY_LOSS, start=4, duration=4, magnitude=0.5),
+        Disruption(kind=DisruptionKind.LEAD_TIME_SPIKE, start=8, duration=4, magnitude=2.0),
+        Disruption(kind=DisruptionKind.SUPPLY_HALT, start=12, duration=3, magnitude=1.0),
+        Disruption(kind=DisruptionKind.DEMAND_SURGE, start=16, duration=4, magnitude=1.8),
+    )
+)
+
+
+@pytest.mark.parametrize("schedule", [None, DISRUPTED], ids=["calm", "disrupted"])
+@pytest.mark.parametrize("policy", [HeuristicSQPolicy, OpaqueDROPolicy])
+@pytest.mark.parametrize("seed", [7, 42])
+def test_material_is_conserved_with_production_in_a_stochastic_chain(
+    policy: type[Policy], seed: int, schedule: DisruptionSchedule | None
+) -> None:
+    """The full balance, production included, at the close of every period."""
+    for periods in range(1, 26):
+        twin = stochastic_twin(policy(), seed, periods=periods, schedule=schedule)
+        result = twin.run()
+        initial = sum(spec.initial_inventory for spec in twin.network.nodes)
+        production = sum(trace.production_total for trace in result.traces)
+        on_hand = sum(state.inventory for state in twin.states.values())
+        in_transit = sum(state.in_transit for state in twin.states.values())
+        sales = customer_sales(twin)
+        assert on_hand + in_transit + sales == pytest.approx(initial + production, abs=1e-6), (
+            f"period {periods - 1}: balance off by "
+            f"{on_hand + in_transit + sales - initial - production}"
+        )
+        assert sales == pytest.approx(sum(t.customer_shipped for t in result.traces))
+
+
 # -- 2. β in [0, 1] -------------------------------------------------------------
 FILL_RATE_CASES: dict[str, Callable[[], DigitalTwin]] = {
     "scripted": lambda: scripted_twin(HORIZON),
@@ -187,7 +209,6 @@ FILL_RATE_CASES: dict[str, Callable[[], DigitalTwin]] = {
 }
 
 
-@R1_1
 @pytest.mark.parametrize("case", sorted(FILL_RATE_CASES))
 def test_fill_rate_is_a_proportion(case: str) -> None:
     """β = customer units served from stock in the same period / customer demand."""
@@ -204,7 +225,6 @@ def test_fill_rate_is_a_proportion(case: str) -> None:
 
 
 # -- 3. a backorder reaches the node that ordered it ----------------------------
-@R1_2
 def test_a_backorder_of_eight_units_reaches_the_downstream_node() -> None:
     """The DC ships 12 at once and owes 8; all 20 must reach the retailer."""
     twin = scripted_twin(HORIZON)

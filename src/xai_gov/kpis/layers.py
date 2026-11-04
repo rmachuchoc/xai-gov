@@ -33,7 +33,13 @@ def _safe_ratio(numerator: float, denominator: float, *, default: float = 0.0) -
 
 
 def operational_layer(result: SimulationResult) -> dict[str, Any]:
-    """Service, inventory and cost."""
+    """Service, inventory and cost.
+
+    ``fill_rate`` is β at the retailer: customer units shipped from stock in
+    the period they were demanded, over customer demand. ``service_level``
+    is α: the fraction of periods with no shortfall. Late shipments of
+    customer backorders enter ``avg_customer_backlog``, never β.
+    """
     traces = result.traces
     demand = sum(t.demand_total for t in traces)
     served = sum(t.served_total for t in traces)
@@ -53,6 +59,8 @@ def operational_layer(result: SimulationResult) -> dict[str, Any]:
         "stockout_periods": sum(1 for t in traces if t.stocked_out_nodes > 0),
         "avg_inventory": round(sum(t.inventory_total for t in traces) / periods, 6),
         "avg_backlog": round(sum(t.backlog_total for t in traces) / periods, 6),
+        "avg_customer_backlog": round(sum(t.customer_backlog for t in traces) / periods, 6),
+        "customer_shipped": round(sum(t.customer_shipped for t in traces), 6),
         "max_backlog": round(max((t.backlog_total for t in traces), default=0.0), 6),
         "reorder_events": sum(
             1 for record in result.records if record.final_quantity > 0.0

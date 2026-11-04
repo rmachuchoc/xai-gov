@@ -1,24 +1,34 @@
-"""The digital twin.
+"""The digital twin: a serial supply chain with backorders.
 
-One period of the closed loop, in the order the protocol's figure 8.1
-fixes:
+The period step is the standard serial model with backorders (the beer
+game; Lee et al.). Within period t, nodes are visited from the retailer
+upstream, and each node j:
 
-1. arrivals due this period are received;
-2. exogenous demand is drawn at echelon 0 and served;
-3. each node's policy proposes an action from its own observed state;
-4. governance mediates the proposal;
-5. the executed action is sealed into the decision record;
-6. the order is placed on the supplier, subject to capacity and halts.
+1. receives the shipments due at t;
+2. sees its demand: customer demand at the retailer, and elsewhere the
+   order its downstream node placed at t − 1;
+3. ships ``min(inventory, backlog + demand)`` into the downstream node's
+   pipeline with that node's lead time (to the customer at the retailer);
+   the rest stays on backorder;
+4. decides its order (policy → governance → shield), seals the decision
+   record, and books the order as the supplier's demand for t + 1.
+   Placing an order moves no material: the supplier ships it when it
+   sees it, from what it has on hand;
+5. at the plant (the node supplied externally) the order is a production
+   release, capped by capacity, that lands after the production time.
 
-Two design commitments are worth stating because they are easy to get
-wrong and expensive to discover late. First, nodes are resolved downstream
-first within a period, so an order placed at echelon 0 is visible to
-echelon 1 in the same period — this is what generates the bullwhip effect
-the systemic-risk KPIs measure; resolving upstream first would suppress it
-and flatter every policy. Second, the record is written *before* the order
-is placed, so a crash can leave an unexecuted record but never an
-unrecorded execution. The traceability contract is one-directional on
-purpose.
+Every period the balance holds: initial inventory + cumulative production =
+inventory at nodes + material in transit + cumulative sales to the customer.
+
+The fill rate β counts only what the retailer ships to the customer from
+stock in the same period the demand arrives (``PeriodTrace.served_total``
+over ``demand_total``), so it lies in [0, 1] by construction. A backorder
+filled late counts in the customer backlog, not in β. Upstream shipments
+are flows inside the chain and never enter it.
+
+The decision record is written *before* the order is booked, so a crash
+can leave an unexecuted record but never an unrecorded execution. The
+traceability contract is one-directional on purpose.
 """
 
 from __future__ import annotations
@@ -63,6 +73,12 @@ class PeriodTrace:
     backlog_cost: float
     order_cost: float
     intervention_cost: float
+    # Retailer only: everything shipped to the customer (on time or late),
+    # and the customer backorders outstanding at the close of the period.
+    customer_shipped: float = 0.0
+    customer_backlog: float = 0.0
+    production_total: float = 0.0
+    in_transit_total: float = 0.0
 
     @property
     def logistics_cost(self) -> float:
@@ -79,6 +95,10 @@ class PeriodTrace:
             "stocked_out_nodes": self.stocked_out_nodes,
             "logistics_cost": self.logistics_cost,
             "intervention_cost": self.intervention_cost,
+            "customer_shipped": self.customer_shipped,
+            "customer_backlog": self.customer_backlog,
+            "production_total": self.production_total,
+            "in_transit_total": self.in_transit_total,
         }
 
 
@@ -133,6 +153,16 @@ class DigitalTwin:
             )
             for spec in network.nodes
         }
+        self._customer: dict[str, NodeSpec] = {}
+        for spec in network.nodes:
+            customers = network.customers_of(spec.node_id)
+            if len(customers) > 1:
+                raise ValueError(
+                    f"{spec.node_id} supplies {len(customers)} nodes; the twin models a "
+                    "serial chain, where every supplier has exactly one customer"
+                )
+            if customers:
+                self._customer[spec.node_id] = customers[0]
 
     # -- random streams ---------------------------------------------------
     def _rng(self, label: str) -> np.random.Generator:
@@ -170,6 +200,7 @@ class DigitalTwin:
 
     def _step(self, period: int, records: list[DecisionRecord]) -> PeriodTrace:
         demand_total = served_total = orders_total = 0.0
+        customer_shipped = production_total = 0.0
         holding = backlog_cost = order_cost = intervention_cost = 0.0
 
         for spec in self.network.downstream_first():
@@ -179,10 +210,14 @@ class DigitalTwin:
                 period, spec.node_id
             )
 
-            demand = self._demand_for(spec, period)
-            served, _ = state.serve(demand)
-            demand_total += demand
-            served_total += served
+            demand, expedited = self._demand_for(spec, state, period)
+            shipped, on_time = state.serve(demand)
+            if spec.echelon == 0:
+                demand_total += demand
+                served_total += on_time
+                customer_shipped += shipped
+            else:
+                self._ship_downstream(spec, shipped, period, expedited=expedited)
 
             observed = state.operating_state(period, data_delay=self.data_delay)
             proposal = self.policy.propose(
@@ -222,9 +257,13 @@ class DigitalTwin:
                     operating_cost=round(period_holding + period_backlog + period_order, 10),
                 )
             )
-            orders_total += self._place_order(spec, state, period, verdict.final_action,
-                                              verdict.final_quantity)
+            placed, produced = self._place_order(
+                spec, state, period, verdict.final_action, verdict.final_quantity
+            )
+            orders_total += placed
+            production_total += produced
 
+        retailers = self.network.demand_facing
         return PeriodTrace(
             period=period,
             demand_total=round(demand_total, 10),
@@ -237,22 +276,43 @@ class DigitalTwin:
             backlog_cost=round(backlog_cost, 10),
             order_cost=round(order_cost, 10),
             intervention_cost=round(intervention_cost, 10),
+            customer_shipped=round(customer_shipped, 10),
+            customer_backlog=round(sum(self.states[r.node_id].backlog for r in retailers), 10),
+            production_total=round(production_total, 10),
+            in_transit_total=round(sum(s.in_transit for s in self.states.values()), 10),
         )
 
-    def _demand_for(self, spec: NodeSpec, period: int) -> float:
-        """Exogenous demand at echelon 0; propagated orders upstream.
+    def _demand_for(
+        self, spec: NodeSpec, state: NodeState, period: int
+    ) -> tuple[float, bool]:
+        """Customer demand at echelon 0; last period's order elsewhere.
 
-        Upstream demand is the backlog of orders its customers placed,
-        which the pipeline already carries — so upstream nodes see demand
-        only through what was ordered from them, never through the true
-        customer process. That informational separation is what makes the
-        network a decentralized POMDP.
+        Upstream nodes see demand only through what their customer ordered,
+        never through the true customer process. That informational
+        separation is what makes the network a decentralized POMDP. The
+        flag says whether the order being filled was expedited.
         """
         if spec.echelon != 0:
-            return 0.0
+            return state.take_orders(period)
         rng = self._rng(f"demand::{spec.node_id}")
         drawn = self.demand.draw(period, rng)
-        return drawn * self.schedule.demand_multiplier(period, spec.node_id)
+        return drawn * self.schedule.demand_multiplier(period, spec.node_id), False
+
+    def _ship_downstream(
+        self, spec: NodeSpec, quantity: float, period: int, *, expedited: bool
+    ) -> None:
+        """Put a shipment into the customer node's pipeline with its lead time."""
+        if quantity <= 0.0:
+            return
+        customer = self._customer[spec.node_id]
+        lead_time = self._lead_time(customer, period)
+        # Expediting buys one period on the shipment that answers the order;
+        # a remainder left on backorder ships later at the normal lead time.
+        if expedited:
+            lead_time = max(lead_time - 1, 1)
+        customer_state = self.states[customer.node_id]
+        customer_state.awaiting -= quantity
+        customer_state.schedule_arrival(period + lead_time, quantity)
 
     def _place_order(
         self,
@@ -261,30 +321,32 @@ class DigitalTwin:
         period: int,
         action: ActionKind,
         quantity: float,
-    ) -> float:
-        """Place the executed order on the supplier."""
+    ) -> tuple[float, float]:
+        """Book the executed order; returns (quantity ordered, quantity produced).
+
+        An internal order only becomes the supplier's demand for the next
+        period: no material moves until the supplier ships it. At the plant
+        the order is a production release, capped by this period's capacity,
+        that arrives after the production time.
+        """
         if action in (ActionKind.HOLD, ActionKind.CANCEL) or quantity <= 0.0:
-            return 0.0
+            return 0.0, 0.0
         if self.schedule.supply_halted(period, spec.node_id):
             _LOG.debug("supply halted", extra={"node": spec.node_id, "period": period})
-            return 0.0
+            return 0.0, 0.0
 
-        lead_time = self._lead_time(spec, period)
-        # Expediting buys one period at a cost already charged through the
-        # order cost; it can never arrive in the same period it is placed.
-        if action is ActionKind.EXPEDITE:
-            lead_time = max(lead_time - 1, 1)
+        expedited = action is ActionKind.EXPEDITE
         state.orders_placed += 1
 
         if spec.supplier_id == EXTERNAL_SOURCE:
-            state.schedule_arrival(period + lead_time, quantity)
-            return float(quantity)
+            produced = min(quantity, max(state.capacity, 0.0))
+            lead_time = self._lead_time(spec, period)
+            if expedited:
+                lead_time = max(lead_time - 1, 1)
+            state.schedule_arrival(period + lead_time, produced)
+            state.cumulative_production += produced
+            return float(quantity), float(produced)
 
-        supplier_state = self.states[spec.supplier_id]
-        shipped = min(supplier_state.inventory, quantity)
-        supplier_state.inventory -= shipped
-        # What the supplier cannot ship becomes its backlog: the mechanism
-        # by which a downstream shortage propagates upstream.
-        supplier_state.backlog += quantity - shipped
-        state.schedule_arrival(period + lead_time, shipped)
-        return float(quantity)
+        self.states[spec.supplier_id].book_order(period + 1, quantity, expedited=expedited)
+        state.awaiting += quantity
+        return float(quantity), 0.0
