@@ -6,12 +6,19 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import yaml
 
-from xai_gov.analysis.campaign import CampaignRunner, apply_exclusions, plan_campaign
+from xai_gov.analysis.campaign import (
+    CampaignRunner,
+    apply_exclusions,
+    plan_campaign,
+    require_equal_horizon,
+)
 from xai_gov.analysis.preregistration import Hypothesis, Preregistration
 from xai_gov.analysis.report import run_campaign
 from xai_gov.core.paths import Paths
 from xai_gov.core.settings import load_settings
+from xai_gov.orchestration.runner import plan_experiment
 
 pytestmark = pytest.mark.integration
 
@@ -224,3 +231,45 @@ def test_paired_differences_drop_the_pair_not_the_observation(settings, arms, pr
     differences = runner.paired("governed", "ungoverned", "guarantees.coverage_error")
     # The ungoverned arm never reports this indicator, so there are no pairs.
     assert differences == []
+
+
+# -- one horizon per campaign -----------------------------------------------------
+def test_equal_horizons_are_accepted() -> None:
+    assert require_equal_horizon({"a": 60, "b": 60}) == 60
+
+
+def test_unequal_horizons_are_refused_with_every_arm_named() -> None:
+    with pytest.raises(ValueError, match=r"one horizon.*governed=60.*ungoverned=40"):
+        require_equal_horizon({"ungoverned": 40, "governed": 60})
+
+
+def test_the_runner_refuses_unequal_arms_before_running_any_cell(  # type: ignore[no-untyped-def]
+    settings, project_root: Path, tmp_path: Path
+) -> None:
+    short = tmp_path / "short.yaml"
+    short.write_text(
+        "_include_:\n"
+        f"  - {project_root / EXPERIMENTS / 'high_vol_ungoverned.yaml'}\n"
+        "experiment:\n  name: short\n  periods: 40\n",
+        encoding="utf-8",
+    )
+    if plan_experiment(short, settings=settings).periods != 40:
+        pytest.skip("the config loader does not resolve absolute includes")
+    arms = {"short": short, "governed": project_root / EXPERIMENTS / "high_vol_governed_h2.yaml"}
+    runner = CampaignRunner(settings=settings, project_root=project_root)
+    with pytest.raises(ValueError, match="one horizon"):
+        runner.run(plan_campaign(arms=arms, replicates=1, base_seed=1))
+    assert runner.results == []
+    assert not any((settings.outputs_root / "runs").iterdir())
+
+
+@pytest.mark.parametrize("campaign", sorted(Path("configs/campaigns").glob("*.yaml")), ids=str)
+def test_every_campaign_in_the_repository_shares_one_horizon(  # type: ignore[no-untyped-def]
+    settings, project_root: Path, campaign: Path
+) -> None:
+    declared = yaml.safe_load((project_root / campaign).read_text(encoding="utf-8"))
+    horizons = {
+        arm: plan_experiment(project_root / path, settings=settings).periods
+        for arm, path in declared["arms"].items()
+    }
+    require_equal_horizon(horizons)

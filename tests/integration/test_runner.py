@@ -45,11 +45,10 @@ def test_pilot_experiment_runs_end_to_end(settings, project_root: Path) -> None:
 
 
 def test_three_echelon_experiment_runs(settings, project_root: Path) -> None:  # type: ignore[no-untyped-def]
-    manifest = run_experiment(
-        project_root / "configs/experiments/high_vol_ungoverned.yaml", settings=settings
-    )
+    path = project_root / "configs/experiments/high_vol_ungoverned.yaml"
+    manifest = run_experiment(path, settings=settings)
     assert manifest["status"] == "completed"
-    assert manifest["decisions"] == 40 * 3
+    assert manifest["decisions"] == plan_experiment(path, settings=settings).periods * 3
 
 
 def test_same_seed_gives_the_same_chain_head(settings, project_root: Path) -> None:  # type: ignore[no-untyped-def]

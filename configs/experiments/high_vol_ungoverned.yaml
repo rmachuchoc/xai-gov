@@ -9,5 +9,8 @@ _include_:
 
 experiment:
   name: high_vol_ungoverned
-  periods: 40
+  # The same horizon as the governed arms it is compared against: every
+  # indicator is a sum or mean over periods, so unequal horizons are not a
+  # paired comparison. The campaign runner refuses arms that differ.
+  periods: 60
   master_seed: 20260703

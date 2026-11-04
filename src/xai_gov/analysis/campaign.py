@@ -119,6 +119,26 @@ def plan_campaign(
     return tuple(cells)
 
 
+def require_equal_horizon(horizons: dict[str, int]) -> int:
+    """Refuse a campaign whose arms simulate different numbers of periods.
+
+    Every operational indicator is a sum or a mean over the horizon, and the
+    early periods of a run differ systematically from the late ones (start-up
+    stock, detector warm-up). Arms of different length therefore differ by
+    construction, and a paired difference between them measures the horizon
+    as much as the treatment. Returns the common horizon.
+    """
+    if not horizons:
+        raise ValueError("a campaign needs at least one arm")
+    distinct = sorted(set(horizons.values()))
+    if len(distinct) > 1:
+        listing = ", ".join(f"{arm}={periods}" for arm, periods in sorted(horizons.items()))
+        raise ValueError(
+            f"campaign arms must share one horizon, found {distinct} periods ({listing})"
+        )
+    return distinct[0]
+
+
 #: Fingerprint of the exclusion logic. Bumped whenever a criterion is added or
 #: changed, because a resumed campaign must not mix cells judged under
 #: different criteria: the reused cells' artifacts predate the new key, the
@@ -184,6 +204,7 @@ class CampaignRunner:
         """
         if self.workers < 1:
             raise ValueError("workers must be at least 1")
+        self._check_horizon(cells)
 
         collected: list[CellResult] = []
         pending: list[CampaignCell] = []
@@ -235,6 +256,19 @@ class CampaignRunner:
                 extra={"count": len(excluded), "by_reason": dict(sorted(by_reason.items()))},
             )
         return tuple(self.results)
+
+    def _check_horizon(self, cells: tuple[CampaignCell, ...]) -> None:
+        """Resolve each arm's plan once and require one shared horizon."""
+        from xai_gov.orchestration.runner import plan_experiment
+
+        horizons: dict[str, int] = {}
+        for cell in cells:
+            if cell.arm in horizons:
+                continue
+            plan = self.plan_override or plan_experiment(cell.experiment, settings=self.settings)
+            horizons[cell.arm] = int(plan.periods)
+        if horizons:
+            require_equal_horizon(horizons)
 
     def _progress(self, done: int, total: int) -> None:
         if total and (done % 10 == 0 or done == total):
