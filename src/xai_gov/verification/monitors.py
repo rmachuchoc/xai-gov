@@ -67,22 +67,30 @@ class RuntimeMonitor:
     periods: int = 0
     violations: list[Violation] = field(default_factory=list)
     model_divergences: int = 0
-    _window: TraceWindow = field(default_factory=lambda: TraceWindow(capacity=32), repr=False)
-    _previous: tuple[int, int] | None = field(default=None, repr=False)
+    # Per node: a temporal property is about one node's trajectory, and the
+    # abstract transition is between two states of the same node.
+    _windows: dict[str, TraceWindow] = field(default_factory=dict, repr=False)
+    _previous: dict[str, tuple[int, int]] = field(default_factory=dict, repr=False)
     _transitions_seen: set[tuple[tuple[int, int], tuple[int, int]]] = field(
         default_factory=set, repr=False
     )
 
     def observe(
-        self, state: OperatingState, *, known_transitions: KnownTransitions | None = None
+        self,
+        state: OperatingState,
+        *,
+        node_id: str = "_",
+        known_transitions: KnownTransitions | None = None,
     ) -> tuple[Violation, ...]:
-        """Fold one period in and return any violations it completes."""
+        """Fold one node-period in and return any violations it completes."""
         self.periods += 1
-        self._window.append(state)
+        window = self._windows.setdefault(node_id, TraceWindow(capacity=32))
+        window.append(state)
 
         current = self.abstraction.abstract(state.inventory, state.backlog).to_key()
-        if self._previous is not None:
-            transition = (self._previous, current)
+        previous = self._previous.get(node_id)
+        if previous is not None:
+            transition = (previous, current)
             self._transitions_seen.add(transition)
             # A transition the verified model never contemplated means the
             # abstraction was not conservative, and the checking result stops
@@ -91,21 +99,26 @@ class RuntimeMonitor:
                 self.model_divergences += 1
                 _LOG.warning(
                     "observed transition absent from the verified model",
-                    extra={"period": state.period, "from": self._previous, "to": current},
+                    extra={
+                        "period": state.period, "node": node_id,
+                        "from": previous, "to": current,
+                    },
                 )
-        self._previous = current
+        self._previous[node_id] = current
 
         found: list[Violation] = []
         for prop in self.specification:
-            violation = self._check(prop, state)
+            violation = self._check(prop, state, window)
             if violation is not None:
                 found.append(violation)
                 self.violations.append(violation)
         return tuple(found)
 
-    def _check(self, prop: SafetyProperty, state: OperatingState) -> Violation | None:
+    def _check(
+        self, prop: SafetyProperty, state: OperatingState, window: TraceWindow
+    ) -> Violation | None:
         if prop.operator is Operator.PERSISTENT:
-            run = self._window.consecutive_true(prop.predicate)
+            run = window.consecutive_true(prop.predicate)
             if run >= prop.horizon:
                 return Violation(
                     property_id=prop.property_id,
@@ -123,9 +136,9 @@ class RuntimeMonitor:
             # analogue of the checked probability, and it is deliberately a
             # frequency rather than a single occurrence: one bad period inside
             # a bounded-eventually property is exactly what the bound permits.
-            hits = self._window.recent_true(prop.predicate, prop.horizon)
+            hits = window.recent_true(prop.predicate, prop.horizon)
             allowed = max(int(prop.bound * prop.horizon), 0)
-            if hits > allowed and len(self._window.states) >= prop.horizon:
+            if hits > allowed and len(window.states) >= prop.horizon:
                 return Violation(
                     property_id=prop.property_id,
                     period=state.period,
@@ -184,9 +197,9 @@ class NoMonitor:
     periods: int = 0
 
     def observe(
-        self, state: OperatingState, *, known_transitions: Any = None
+        self, state: OperatingState, *, node_id: str = "_", known_transitions: Any = None
     ) -> tuple[Violation, ...]:
-        del state, known_transitions
+        del state, node_id, known_transitions
         self.periods += 1
         return ()
 

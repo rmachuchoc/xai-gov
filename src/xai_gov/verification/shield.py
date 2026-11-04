@@ -122,7 +122,10 @@ class Shield:
     #: the rate nowhere; the rate is what a specification review needs.
     conflicts: int = 0
     conflicting_pairs: dict[str, int] = field(default_factory=dict)
-    _window: TraceWindow = field(default_factory=TraceWindow, repr=False)
+    #: One history per node. Temporal properties ("backlog critical for three
+    #: consecutive periods") are about one node's trajectory; a single shared
+    #: window would interleave the states of every node in the chain.
+    _windows: dict[str, TraceWindow] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         if self.mode not in SHIELD_MODES:
@@ -133,7 +136,11 @@ class Shield:
             raise ValueError("max_order must be positive")
 
     # -- synthesis --------------------------------------------------------
-    def envelope(self, state: OperatingState) -> ActionEnvelope:
+    def window_for(self, node_id: str) -> TraceWindow:
+        """The state history of one node, created on first use."""
+        return self._windows.setdefault(node_id, TraceWindow())
+
+    def envelope(self, state: OperatingState, *, node_id: str = "_") -> ActionEnvelope:
         """The admissible action range in this state, derived from the spec.
 
         Each property contributes a constraint, and the envelope is their
@@ -147,8 +154,9 @@ class Shield:
         lower_source: str | None = None
         upper_source: str | None = None
 
+        window = self.window_for(node_id)
         for prop in self.specification:
-            lower, upper, engaged = self._constraint_of(prop, state)
+            lower, upper, engaged = self._constraint_of(prop, state, window)
             if not engaged:
                 continue
             if lower > minimum:
@@ -176,11 +184,11 @@ class Shield:
         )
 
     def _constraint_of(
-        self, prop: SafetyProperty, state: OperatingState
+        self, prop: SafetyProperty, state: OperatingState, window: TraceWindow
     ) -> tuple[float, float, bool]:
         """One property's contribution: (lower bound, upper bound, engaged)."""
         test = PREDICATES[prop.predicate]
-        consecutive = self._window.consecutive_true(prop.predicate)
+        consecutive = window.consecutive_true(prop.predicate)
 
         if prop.predicate in ("stockout", "inventory_critical"):
             threshold = 0.0 if prop.predicate == "stockout" else 5.0
@@ -229,8 +237,9 @@ class Shield:
         if self.mode == "backup" and spec is None:
             raise ValueError("the backup shield needs the node spec to compute its order")
         self.decisions += 1
-        self._window.append(state)
-        envelope = self.envelope(state)
+        node_id = spec.node_id if spec is not None else "_"
+        self.window_for(node_id).append(state)
+        envelope = self.envelope(state, node_id=node_id)
 
         if envelope.contains(quantity):
             return action, quantity, ShieldOutcome()

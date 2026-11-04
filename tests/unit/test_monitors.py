@@ -93,3 +93,13 @@ def test_the_control_arm_reports_no_guarantee() -> None:
     monitor = NoMonitor()
     assert monitor.observe(state()) == ()
     assert monitor.guarantee_intact is False
+
+
+def test_a_persistent_violation_is_tracked_per_node_in_an_interleaved_chain() -> None:
+    """The engine visits retail, dc, plant each period; histories must not mix."""
+    monitor = RuntimeMonitor()
+    for period in range(3):
+        monitor.observe(state(period=period, backlog=60.0, inventory=0.0), node_id="retail")
+        monitor.observe(state(period=period, backlog=0.0, inventory=80.0), node_id="dc")
+    assert monitor.by_property().get("SAFE-1") == 1
+    assert all(v.period == 2 for v in monitor.violations if v.property_id == "SAFE-1")

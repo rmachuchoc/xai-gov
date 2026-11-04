@@ -204,7 +204,7 @@ class CpomdpGovernanceAgent(GovernanceAgent):
         # Monitors watch every period, governed or not. Instrumenting only the
         # shielded arm would make the two arms unobservable in the same terms,
         # and the price of verified safety is a difference between them.
-        self.monitor.observe(state)
+        self.monitor.observe(state, node_id=spec.node_id)
 
         signal = self.detectors.for_node(spec.node_id).observe(state.demand_observed)
         belief_filter = self.belief_for(spec.node_id)
