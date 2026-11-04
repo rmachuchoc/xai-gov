@@ -26,6 +26,7 @@ from xai_gov.simulation.demand import build_demand
 from xai_gov.simulation.disruptions import build_schedule
 from xai_gov.simulation.engine import DigitalTwin, SimulationResult
 from xai_gov.simulation.network import build_network
+from xai_gov.verification.specification import build_specification
 
 _LOG = get_logger("orchestration.runner")
 
@@ -173,5 +174,13 @@ def run_experiment(
             writer.record_decision(record)
 
         writer.write_summary(summarize(plan, twin, result))
-        writer.write_kpis(compute_kpis(result, shock_periods=shock_periods))
+        verification = plan.config.get("verification") or {}
+        writer.write_kpis(
+            compute_kpis(
+                result,
+                shock_periods=shock_periods,
+                specification=build_specification(verification.get("specification")),
+                horizon_lookahead=int(verification.get("horizon_lookahead", 1)),
+            )
+        )
         return writer.close()

@@ -19,6 +19,8 @@ from typing import Any
 
 from xai_gov.io.decision_record import DecisionRecord, GovernanceAction
 from xai_gov.simulation.engine import SimulationResult
+from xai_gov.verification.envelope_log import envelope_layer
+from xai_gov.verification.specification import Specification
 
 
 def _variance(values: list[float]) -> float:
@@ -447,9 +449,18 @@ def value_layer(operational: dict[str, Any], governance: dict[str, Any]) -> dict
 
 
 def compute_kpis(
-    result: SimulationResult, *, shock_periods: tuple[int, ...] = ()
+    result: SimulationResult,
+    *,
+    shock_periods: tuple[int, ...] = (),
+    specification: Specification | None = None,
+    horizon_lookahead: int = 1,
 ) -> dict[str, Any]:
-    """Assemble all six layers for one run."""
+    """Assemble all six layers for one run, plus the envelope log.
+
+    The envelope log is computed from the records against the arm's declared
+    specification (the default one when the arm declares none), so it exists
+    for every arm and the arms are compared on the same properties.
+    """
     operational = operational_layer(result)
     governance = governance_layer(result.records)
     return {
@@ -460,4 +471,7 @@ def compute_kpis(
         "governance": governance,
         "per_echelon": per_echelon_layer(result.records),
         "organizational_value": value_layer(operational, governance),
+        "envelope": envelope_layer(
+            result.records, specification, horizon_lookahead=horizon_lookahead
+        ),
     }
