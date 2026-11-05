@@ -348,6 +348,53 @@ def fig_network(root: Path, out: Path) -> None:
     plt.close(fig)
 
 
+def fig_calibration(root: Path, out: Path) -> None:
+    """Posterior predictive distance on held-out statistics, 30 M5 series per process.
+
+    Reads the v1 calibration reports (the calibration involves the demand
+    process only, so the engine change does not affect it). The median is the
+    standard one, the mean of the two middle values for an even count.
+    """
+    reports = {
+        "iid": root / "outputs/calibration/calibration_weekly_both.json",
+        "ar1": root / "outputs/calibration/calibration_weekly_ar1.json",
+    }
+    labels = {"iid": "Level + i.i.d. noise", "ar1": "Level + AR(1) noise"}
+    rows: list[list[Any]] = []
+    fig, ax = plt.subplots(figsize=(TEXT_WIDTH_IN * 0.8, 2.3))
+    rng = np.random.default_rng(0)
+    for y, process in enumerate(("ar1", "iid")):
+        series = json.loads(reports[process].read_text(encoding="utf-8"))["series"]
+        checks = [v["processes"][process] for v in series.values() if process in v["processes"]]
+        gaps = [float(c["sim_to_real_gap"]) for c in checks]
+        jitter = rng.uniform(-0.18, 0.18, size=len(gaps))
+        ax.plot(gaps, y + jitter, "o", color=ONE, alpha=0.75, markersize=4,
+                markeredgecolor=SURFACE, markeredgewidth=0.6)
+        median = float(np.median(gaps))
+        ax.vlines(median, y - 0.3, y + 0.3, color=INK, linewidth=1.6, zorder=3)
+        ax.annotate(f"median {median:.2f}", (median, y + 0.32), xytext=(0, 2),
+                    textcoords="offset points", ha="center", va="bottom", fontsize=7,
+                    color=INK, bbox=LABEL_BOX, zorder=4)
+        overfit = sum(bool(c["overfitted"]) for c in checks)
+        identified = sum(bool(c["all_identified"]) for c in checks)
+        rows += [[process, name, round(g, 4), bool(c["overfitted"]), bool(c["all_identified"])]
+                 for name, g, c in zip(series, gaps, checks, strict=True)]
+        labels[process] += (f"\noverfit {overfit}/{len(gaps)} · "
+                            f"identified {identified}/{len(gaps)}")
+    ax.set_yticks([0, 1], [labels["ar1"], labels["iid"]])
+    ax.set_ylim(-0.75, 1.75)
+    ax.set_xlim(0, 12)
+    ax.grid(axis="y", visible=False)
+    ax.set_xlabel("posterior predictive distance on held-out statistics (larger is worse)")
+    ax.set_title("Calibration against 30 M5 store-by-category series (weekly)", loc="left")
+    fig.savefig(out / "fig_v2_calibration.png", dpi=DPI, bbox_inches="tight")
+    plt.close(fig)
+    with (out / "fig_v2_calibration.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["process", "series", "gap", "overfitted", "identified"])
+        writer.writerows(rows)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="render the v2 figures")
     parser.add_argument("--outputs-root", required=True)
@@ -361,6 +408,7 @@ def main(argv: list[str] | None = None) -> int:
     report = json.loads((outputs / CONFIRMATORY).read_text(encoding="utf-8"))
     cells = load_cells(outputs / CONFIRMATORY, outputs / "runs")
     fig_network(root, figures)
+    fig_calibration(root, figures)
     fig_beta(cells, figures)
     fig_evidence(report, figures)
     fig_epsilon(cells, figures)
