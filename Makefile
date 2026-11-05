@@ -113,7 +113,7 @@ caltable:
 figures:
 	$(SAFE_ENV) $(PY) scripts/render_figures.py --dpi $(DPI)
 
-# The v2 figures (PNG 300 dpi, PDF and a CSV table per figure) from outputs/v2.
+# The v2 figures (PNG at 600 dpi and a CSV table per figure) from outputs/v2.
 figures-v2:
 	$(SAFE_ENV) $(PY) scripts/render_figures_v2.py --outputs-root outputs/v2
 

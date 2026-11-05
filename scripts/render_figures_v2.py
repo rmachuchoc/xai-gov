@@ -3,7 +3,7 @@
 
     python scripts/render_figures_v2.py --outputs-root outputs/v2
 
-Writes PNG (300 dpi), PDF and a CSV table view of every figure to
+Writes a PNG at 600 dpi and a CSV table view of every figure to
 <outputs-root>/figures/. Nothing is hard-coded: each value is read from the
 campaign reports, the stored cells, the sweeps, the power simulation and the
 null line. The manuscript is not touched.
@@ -41,6 +41,10 @@ INK = "#0b0b0b"
 INK_2 = "#52514e"
 GRID = "#e6e5e0"
 REFERENCE = "#8a8984"
+DPI = 600
+#: Every label drawn inside a plot sits on a patch of the surface colour, so no
+#: gridline, reference line or curve runs through its text.
+LABEL_BOX = {"facecolor": "#fcfcfb", "edgecolor": "none", "pad": 1.2}
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]
 ONE = SERIES[0]
 
@@ -62,13 +66,23 @@ def style() -> None:
 
 
 def save(fig: Any, directory: Path, name: str, header: list[str], rows: list[list[Any]]) -> None:
-    fig.savefig(directory / f"{name}.png", dpi=300, bbox_inches="tight")
-    fig.savefig(directory / f"{name}.pdf", bbox_inches="tight")
+    fig.savefig(directory / f"{name}.png", dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     with (directory / f"{name}.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(header)
         writer.writerows(rows)
+
+
+def sci(value: float, digits: int = 1) -> str:
+    """A number in scientific notation written as m × 10^n, never m e n."""
+    if value == 0:
+        return "0"
+    exponent = int(np.floor(np.log10(abs(value))))
+    mantissa = value / 10**exponent
+    if abs(exponent) < 3:
+        return f"{value:.{max(digits, 2)}f}"
+    return rf"${mantissa:.{digits}f}\times10^{{{exponent}}}$"
 
 
 def mean_ci(values: list[float]) -> tuple[float, float, float]:
@@ -101,8 +115,8 @@ def fig_beta(cells: tuple[Any, ...], out: Path) -> None:
     dot_whisker(ax, [r[0] for r in rows], [r[2] for r in rows], [r[3] for r in rows],
                 [r[4] for r in rows])
     for i, r in enumerate(rows[::-1]):
-        ax.annotate(f"{r[2]:.3f}", (r[4], i), xytext=(4, 0), textcoords="offset points",
-                    va="center", fontsize=7, color=INK_2)
+        ax.annotate(f"{r[2]:.3f}", (r[4], i), xytext=(5, 0), textcoords="offset points",
+                    va="center", fontsize=7, color=INK_2, bbox=LABEL_BOX, zorder=4)
     ax.set_xlim(0, 1)
     ax.set_xlabel("fill rate β at the retailer (mean, 95% CI over 500 replicates)")
     ax.set_title("Fill rate by arm", loc="left")
@@ -121,8 +135,9 @@ def fig_evidence(report: dict[str, Any], out: Path) -> None:
     dot_whisker(ax, labels, [r[3] for r in rows], [r[4] for r in rows], [r[5] for r in rows])
     ax.axvline(0, color=REFERENCE, linewidth=0.8)
     for i, r in enumerate(rows[::-1]):
-        ax.annotate(f"e = {r[6]:.1e}", (max(r[5], 0.0), i), xytext=(6, 0),
-                    textcoords="offset points", va="center", fontsize=7, color=INK_2)
+        ax.annotate(f"e = {sci(r[6])}", (max(r[5], 0.0), i), xytext=(6, 0),
+                    textcoords="offset points", va="center", fontsize=7, color=INK_2,
+                    bbox=LABEL_BOX, zorder=4)
     ax.set_xlim(-0.9, 1.05)
     ax.set_xlabel("paired difference in β (mean, 95% confidence sequence); threshold e ≥ 240")
     ax.set_title("Confirmatory hypotheses H1–H6", loc="left")
@@ -168,7 +183,8 @@ def fig_envelope(report: dict[str, Any], out: Path) -> None:
     envelope = report["envelope"]
     arms = [a for a in ARM_ORDER if a in envelope and envelope[a].get("status") == "available"]
     properties = sorted(envelope[arms[0]]["properties"])
-    fig, axes = plt.subplots(1, len(properties), figsize=(TEXT_WIDTH_IN, 2.8), sharey=True)
+    fig, axes = plt.subplots(1, len(properties), figsize=(TEXT_WIDTH_IN, 3.0), sharey=True,
+                             gridspec_kw={"wspace": 0.25})
     rows = []
     for ax, prop in zip(axes, properties, strict=True):
         entries = [envelope[a]["properties"][prop] for a in arms]
@@ -176,13 +192,13 @@ def fig_envelope(report: dict[str, Any], out: Path) -> None:
                     [e["ci_high"] for e in entries])
         bound = entries[0]["bound"]
         ax.axvline(bound, color=REFERENCE, linewidth=0.8)
-        ax.annotate(f"bound {bound:g}", (bound, len(arms) - 0.4), xytext=(3, 0),
-                    textcoords="offset points", fontsize=7, color=INK_2)
         ax.set_xlim(0, 1)
-        ax.set_title(prop, loc="left")
+        ax.set_title(f"{prop} · bound {bound:g}", loc="left")
         rows += [[a, prop, e["frequency"], e["ci_low"], e["ci_high"], bound, e["verdict"]]
                  for a, e in zip(arms, entries, strict=True)]
     axes[1].set_xlabel("violation frequency (one trial per replicate; Clopper–Pearson 95%)")
+    fig.suptitle("Safety properties by arm (grey line: the property's bound)",
+                 x=0.01, y=1.04, ha="left", fontsize=9)
     save(fig, out, "fig_v2_envelope", ["arm", "property", "frequency", "ci_low", "ci_high",
                                          "bound", "verdict"], rows)
 
@@ -220,7 +236,7 @@ def fig_sweeps(sweeps: dict[str, Any], out: Path) -> None:
 
 
 def fig_power(power: dict[str, Any], out: Path, sealed_n: int) -> None:
-    fig, ax = plt.subplots(figsize=(TEXT_WIDTH_IN * 0.62, 2.6))
+    fig, ax = plt.subplots(figsize=(TEXT_WIDTH_IN * 0.75, 2.6))
     rows = []
     for color, h in zip(SERIES, power["hypotheses"], strict=False):
         cases = [c for g in h["generators"].values() for c in g["by_shift"]]
@@ -230,16 +246,18 @@ def fig_power(power: dict[str, Any], out: Path, sealed_n: int) -> None:
         rows += [[h["hypothesis"], n, p] for n, p in zip(n_values, worst, strict=True)]
     ax.axhline(0.80, color=REFERENCE, linewidth=0.8)
     ax.axvline(sealed_n, color=REFERENCE, linewidth=0.8)
-    ax.annotate(f"sealed n = {sealed_n}", (sealed_n, 0.62), xytext=(-3, 0),
-                textcoords="offset points", fontsize=7, color=INK_2, ha="right")
-    ax.annotate("power 0.80", (0, 0.80), xytext=(3, 3), textcoords="offset points",
-                fontsize=7, color=INK_2)
+    ax.annotate(f"sealed n = {sealed_n}", (sealed_n, 0.06), xytext=(5, 0),
+                textcoords="offset points", fontsize=7, color=INK_2, va="center",
+                bbox=LABEL_BOX, zorder=4)
+    ax.annotate("power 0.80", (10, 0.80), xytext=(0, 6), textcoords="offset points",
+                fontsize=7, color=INK_2, va="bottom", bbox=LABEL_BOX, zorder=4)
     ax.set_xlim(0, 700)
     ax.set_ylim(0, 1.02)
     ax.set_xlabel("replicates n")
-    ax.set_ylabel("simulated power (worst generator and direction)")
-    ax.set_title("Power of aGRAPA at threshold 240, Δβ = 0.05", loc="left")
-    ax.legend(frameon=False, loc="lower right", ncol=2)
+    ax.set_ylabel("simulated power")
+    ax.set_title("Power of aGRAPA at threshold 240, Δβ = 0.05 (worst generator and direction)",
+                 loc="left", fontsize=8)
+    ax.legend(frameon=False, loc="center left", bbox_to_anchor=(1.01, 0.5), ncol=1)
     save(fig, out, "fig_v2_power", ["hypothesis", "n", "power"], rows)
 
 
