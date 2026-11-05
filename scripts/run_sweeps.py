@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,7 @@ from xai_gov.core.paths import Paths
 from xai_gov.core.settings import load_settings
 
 SWEEP_REPORT_NAME = "sweeps.json"
+MAX_WORKERS = 6
 
 
 def report(result: Any) -> None:
@@ -44,7 +46,10 @@ def report(result: Any) -> None:
     for level in payload["levels"]:
         difference = level["difference"]
         shown = "—" if difference is None else f"{difference:+.4f}"
-        print(f"    {level['label']:<24} {shown:>10}   n={level['included_cells']}")
+        ci = level.get("ci95")
+        interval = "" if ci is None else f"  [{ci[0]:+.4f}, {ci[1]:+.4f}]"
+        print(f"    {level['label']:<24} {shown:>10}{interval}   "
+              f"pairs={level.get('paired_replicates')}")
     if not payload["has_data"]:
         # No crossing and no monotonicity are reported when nothing was
         # measured: printing them would present the absence of data as a
@@ -54,6 +59,9 @@ def report(result: Any) -> None:
         print(f"    {payload['interpretation']}")
         return
     print(f"    crossing   {payload['crossing']}")
+    crossing_ci = payload.get("crossing_interval") or {}
+    print(f"    crossing CI {crossing_ci.get('ci95')}  "
+          f"(resamples without a crossing: {crossing_ci.get('share_without_crossing')})")
     print(f"    monotone   {payload['monotone']}")
     print(f"    {payload['interpretation']}")
 
@@ -66,11 +74,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--replicates",
         type=int,
-        default=10,
+        default=100,
         help=(
-            "replicates per level (default 10). Lower than the main campaign's 40 "
-            "because a sweep multiplies them by the number of levels; a crossing "
-            "is an estimate to be confirmed at full power, not a final figure."
+            "replicates per level (default 100). Each level's paired difference "
+            "and the crossing carry a bootstrap interval over these replicates."
         ),
     )
     parser.add_argument(
@@ -84,12 +91,22 @@ def main(argv: list[str] | None = None) -> int:
             "depends on this price and must be reported with it."
         ),
     )
-    parser.add_argument("--base-seed", type=int, default=20260703)
+    # v2: a seed of its own, distinct from the v1 campaign (20260703) and from
+    # every seed of the v2 plan, so no sweep cell coincides with a sealed cell.
+    parser.add_argument("--base-seed", type=int, default=20261108)
+    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--outputs-root", required=True,
+                        help="where the sweep runs and report go (v2: outputs/v2)")
     parser.add_argument("--log-level", default="WARNING")
     args = parser.parse_args(argv)
+    if not 1 <= args.workers <= MAX_WORKERS:
+        parser.error(f"--workers must lie in [1, {MAX_WORKERS}]")
 
     root = Path(__file__).resolve().parents[1]
     settings = load_settings(Paths(root=root))
+    outputs = Path(args.outputs_root).resolve()
+    (outputs / "runs").mkdir(parents=True, exist_ok=True)
+    settings = replace(settings, outputs_root=outputs)
     configure_logging(
         level=args.log_level, console=True, jsonl=True,
         log_dir=settings.paths.logs, filename="sweeps.log", force=True,
@@ -127,6 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         service_value=args.service_value,
         replicates=args.replicates,
         base_seed=args.base_seed,
+        workers=args.workers,
     )
 
     results: dict[str, Any] = {}
@@ -165,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
 
-    directory = settings.outputs_root / "campaigns" / "governance_value"
+    directory = settings.outputs_root / "sweeps"
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / SWEEP_REPORT_NAME
     path.write_text(

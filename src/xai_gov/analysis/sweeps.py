@@ -33,6 +33,10 @@ from xai_gov.core.settings import Settings
 
 _LOG = get_logger("analysis.sweeps")
 
+#: The bootstrap behind every sweep interval, fixed so a report is reproducible.
+BOOTSTRAP_SEED = 20261109
+BOOTSTRAP_RESAMPLES = 2000
+
 
 @dataclass(frozen=True, slots=True)
 class SweepPoint:
@@ -48,6 +52,24 @@ class SweepPoint:
     #: produced it; a sweep whose report names no runs cannot be audited, only
     #: re-executed.
     runs: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    #: Paired by replicate: arms share the replicate seed, so each replicate
+    #: gives one treatment-minus-control difference (in economic mode the
+    #: baseline cancels inside the replicate). The interval comes from these.
+    differences: tuple[float, ...] = ()
+
+    def interval(self, *, seed: int = BOOTSTRAP_SEED, resamples: int = BOOTSTRAP_RESAMPLES,
+                 confidence: float = 0.95) -> tuple[float, float] | None:
+        """Percentile bootstrap interval of the mean paired difference."""
+        if len(self.differences) < 2:
+            return None
+        import numpy as np
+
+        values = np.asarray(self.differences, dtype=float)
+        rng = np.random.default_rng(seed)
+        draws = rng.integers(0, len(values), size=(resamples, len(values)))
+        means = values[draws].mean(axis=1)
+        tail = (1.0 - confidence) / 2.0
+        return float(np.quantile(means, tail)), float(np.quantile(means, 1.0 - tail))
 
     @property
     def difference(self) -> float | None:
@@ -72,6 +94,12 @@ class SweepPoint:
                 None if self.control_value is None else round(self.control_value, 6)
             ),
             "difference": None if difference is None else round(difference, 6),
+            "paired_replicates": len(self.differences),
+            "ci95": (
+                None if (ci := self.interval()) is None
+                else [round(ci[0], 6), round(ci[1], 6)]
+            ),
+            "ci_method": "percentile bootstrap over replicates of the paired difference",
             "included_cells": self.included_cells,
             "runs": [
                 {"arm": arm, "run_name": name}
@@ -150,9 +178,51 @@ class SweepResult:
         negative = [d for d in deltas if d < -1e-9]
         return not (positive and negative)
 
+    def crossing_interval(
+        self, *, seed: int = BOOTSTRAP_SEED, resamples: int = BOOTSTRAP_RESAMPLES,
+        confidence: float = 0.95,
+    ) -> dict[str, Any] | None:
+        """Bootstrap the crossing by resampling replicates jointly across levels.
+
+        Replicate r carries the same seed at every level, so a resample draws
+        replicate indices once and applies them to every level. Reports the
+        percentile interval of the crossings found and the share of resamples
+        in which the curve did not cross at all.
+        """
+        usable = [p for p in self.points if p.differences]
+        if len(usable) < 2:
+            return None
+        n = min(len(p.differences) for p in usable)
+        if n < 2:
+            return None
+        import numpy as np
+
+        matrix = np.asarray([p.differences[:n] for p in usable], dtype=float)
+        levels = [p.level for p in usable]
+        rng = np.random.default_rng(seed)
+        crossings: list[float] = []
+        for _ in range(resamples):
+            means = matrix[:, rng.integers(0, n, size=n)].mean(axis=1)
+            found = _first_crossing(levels, [float(m) for m in means])
+            if found is not None:
+                crossings.append(found)
+        tail = (1.0 - confidence) / 2.0
+        return {
+            "resamples": resamples,
+            "replicates": n,
+            "share_without_crossing": round(1.0 - len(crossings) / resamples, 6),
+            "ci95": (
+                [round(float(np.quantile(crossings, tail)), 6),
+                 round(float(np.quantile(crossings, 1.0 - tail)), 6)]
+                if crossings else None
+            ),
+            "method": "percentile bootstrap, replicates resampled jointly across levels",
+        }
+
     def to_payload(self) -> dict[str, Any]:
         crossing = self.crossing
         return {
+            "crossing_interval": self.crossing_interval(),
             "parameter": self.parameter,
             "indicator": self.indicator,
             "comparison": f"{self.treatment} minus {self.control}",
@@ -168,6 +238,17 @@ class SweepResult:
                 usable=len(self.usable), levels=len(self.points),
             ),
         }
+
+
+def _first_crossing(levels: list[float], differences: list[float]) -> float | None:
+    """Linear interpolation of the first sign change, as `SweepResult.crossing`."""
+    for (x0, a), (x1, b) in pairwise(zip(levels, differences, strict=True)):
+        if (a > 0) == (b > 0):
+            continue
+        if abs(b - a) < 1e-12:
+            return x1
+        return x0 + (x1 - x0) * (-a) / (b - a)
+    return None
 
 
 def _interpret(
@@ -215,7 +296,7 @@ class ParameterSweep:
     #: indicator — which answers whether the shield helps, not whether it pays.
     #: The reviews asked the second question.
     baseline: Path | None = None
-    indicator: str = "operational.service_level"
+    indicator: str = "operational.fill_rate"
     #: What one point of the operational indicator is worth, in the same units
     #: the oversight cost is denominated in. Required for the economic mode and
     #: declared rather than assumed: the indicator is a fraction in [0, 1] and
@@ -292,6 +373,7 @@ class ParameterSweep:
                     control_value, base_value, control_cost, self.service_value
                 )
                 treatment_n += base_n
+            differences = self._paired_differences(override, level)
             arms = [self.treatment, self.control]
             if self.baseline is not None:
                 arms.append(self.baseline)
@@ -302,6 +384,7 @@ class ParameterSweep:
                     treatment_value=treatment_value,
                     control_value=control_value,
                     included_cells=treatment_n + control_n,
+                    differences=differences,
                     runs=tuple(
                         (arm.stem, self._run_names(arm, override, level)) for arm in arms
                     ),
@@ -334,6 +417,38 @@ class ParameterSweep:
             if result.included and (value := result.indicator(wanted)) is not None
         ]
         return (sum(values) / len(values) if values else None), len(values)
+
+    def _by_replicate(
+        self, experiment: Path, override: str, level: float, indicator: str
+    ) -> dict[int, float]:
+        """Indicator value of each included replicate of one arm at one level."""
+        return {
+            int(result.cell.replicate): float(value)
+            for result in self._run_level(experiment, override, level)
+            if result.included and (value := result.indicator(indicator)) is not None
+        }
+
+    def _paired_differences(self, override: str, level: float) -> tuple[float, ...]:
+        """Treatment minus control within each replicate both arms produced.
+
+        In economic mode each arm's value is (arm - baseline) x price - cost, so
+        within a replicate the difference is (t - c) x price - (cost_t - cost_c)
+        and the baseline cancels; it still has to be present for the replicate
+        to count, as in the point estimate.
+        """
+        treatment = self._by_replicate(self.treatment, override, level, self.indicator)
+        control = self._by_replicate(self.control, override, level, self.indicator)
+        common = sorted(set(treatment) & set(control))
+        if self.baseline is None:
+            return tuple(treatment[r] - control[r] for r in common)
+        baseline = self._by_replicate(self.baseline, override, level, self.indicator)
+        cost_t = self._by_replicate(self.treatment, override, level, _COST)
+        cost_c = self._by_replicate(self.control, override, level, _COST)
+        common = [r for r in common if r in baseline and r in cost_t and r in cost_c]
+        return tuple(
+            (treatment[r] - control[r]) * self.service_value - (cost_t[r] - cost_c[r])
+            for r in common
+        )
 
     def _run_names(self, experiment: Path, override: str, level: float) -> tuple[str, ...]:
         """The runs behind one arm at one level, in replicate order."""

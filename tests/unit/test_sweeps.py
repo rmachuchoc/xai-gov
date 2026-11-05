@@ -262,3 +262,71 @@ def test_mismatched_labels_are_refused(tmp_path) -> None:  # type: ignore[no-unt
     )
     with pytest.raises(ValueError, match="match levels one to one"):
         sweep.run(parameter="x", levels=[1.0, 2.0], override="a.b", labels=["only one"])
+
+
+# -- v2: paired intervals ------------------------------------------------------
+def paired_point(level: float, differences: list[float]) -> SweepPoint:
+    mean = sum(differences) / len(differences)
+    return SweepPoint(
+        level=level, label=f"l={level:g}", treatment_value=mean, control_value=0.0,
+        included_cells=2 * len(differences), differences=tuple(differences),
+    )
+
+
+def test_the_level_interval_contains_the_mean_and_is_reproducible() -> None:
+    sweep_point = paired_point(1.0, [0.1, 0.12, 0.08, 0.11, 0.09, 0.1, 0.13, 0.07])
+    ci = sweep_point.interval()
+    assert ci is not None and ci[0] < 0.1 < ci[1]
+    assert sweep_point.interval() == ci
+    payload = sweep_point.to_payload()
+    assert payload["paired_replicates"] == 8 and payload["ci95"] is not None
+    assert point(1.0, 0.2, 0.1).interval() is None
+
+
+def test_the_crossing_interval_brackets_the_crossing() -> None:
+    points = [
+        paired_point(1.0, [0.20 + 0.01 * ((i % 5) - 2) for i in range(40)]),
+        paired_point(2.0, [0.05 + 0.01 * ((i % 5) - 2) for i in range(40)]),
+        paired_point(3.0, [-0.10 + 0.01 * ((i % 5) - 2) for i in range(40)]),
+    ]
+    swept = result(points)
+    interval = swept.crossing_interval()
+    assert interval is not None and swept.crossing is not None
+    low, high = interval["ci95"]
+    assert low <= swept.crossing <= high
+    assert interval["share_without_crossing"] == 0.0
+
+
+def test_a_curve_that_never_crosses_has_no_crossing_interval() -> None:
+    points = [paired_point(level, [0.3, 0.31, 0.29, 0.3]) for level in (1.0, 2.0, 3.0)]
+    interval = result(points).crossing_interval()
+    assert interval is not None
+    assert interval["ci95"] is None and interval["share_without_crossing"] == 1.0
+
+
+def test_paired_differences_match_the_difference_of_means(  # type: ignore[no-untyped-def]
+    project_root, tmp_path
+) -> None:
+    """Within-replicate pairing, economic mode included: the baseline cancels."""
+    from dataclasses import replace as _replace
+    from pathlib import Path as _Path
+
+    from xai_gov.analysis.sweeps import ParameterSweep
+    from xai_gov.core.paths import Paths
+    from xai_gov.core.settings import load_settings
+
+    (tmp_path / "runs").mkdir()
+    settings = _replace(load_settings(Paths(root=project_root)), outputs_root=tmp_path)
+    experiments = _Path(project_root) / "configs/experiments"
+    sweep = ParameterSweep(
+        settings=settings, project_root=project_root,
+        treatment=experiments / "high_vol_shielded.yaml",
+        control=experiments / "high_vol_governed_h2.yaml",
+        baseline=experiments / "high_vol_ungoverned.yaml",
+        replicates=3, base_seed=5,
+    )
+    swept = sweep.run(parameter="intervention_cost", levels=[0.5, 2.0],
+                      override="governance.economics.intervention_cost")
+    for level in swept.points:
+        assert len(level.differences) == 3
+        assert level.difference == pytest.approx(sum(level.differences) / 3, abs=1e-9)

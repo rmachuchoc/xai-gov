@@ -68,9 +68,11 @@ DPI ?= 300
 # The two parameter sweeps: break-even in the unit intervention cost, and the
 # severity threshold. Separate from `study` because a sweep re-runs a paired
 # campaign at every level, so it costs the study times the number of levels.
-SWEEP_REPLICATES ?= 10
+SWEEP_REPLICATES ?= 100
+SWEEP_OUTPUTS ?= outputs/v2
 sweeps:
-	$(SAFE_ENV) $(PY) scripts/run_sweeps.py --replicates $(SWEEP_REPLICATES)
+	$(SAFE_ENV) $(PY) scripts/run_sweeps.py --replicates $(SWEEP_REPLICATES) \
+		--workers $(WORKERS) --outputs-root $(SWEEP_OUTPUTS)
 
 # The detector null line (decision 6): 200 stationary runs per detector arm.
 # The martingale's Ville bound is not claimed; its false-alarm rate is measured
