@@ -244,3 +244,67 @@ def governance_rates(results: tuple[CellResult, ...]) -> dict[str, Any]:
             for arm, values in sorted(by_arm.items())
         },
     }
+
+
+def epsilon_clipping(results: tuple[CellResult, ...]) -> dict[str, Any]:
+    """How often, and for how long, eps_t sat on its clip bounds, per arm (R2.5).
+
+    Read from each run's guarantees layer; arms without an active adaptive
+    detector are omitted. The run is the unit for the share of runs with any
+    clipping (Clopper-Pearson); frequencies and durations are over runs.
+    """
+    import statistics
+
+    from xai_gov.verification.envelope_log import _rates
+
+    by_arm: dict[str, list[dict[str, Any]]] = {}
+    saturated: dict[str, list[bool]] = {}
+    for result in results:
+        if not result.included:
+            continue
+        guarantees = result.kpis.get("guarantees") or {}
+        clipping = (guarantees.get("epsilon") or {}).get("clipping")
+        if guarantees.get("status") != "available" or not clipping:
+            continue
+        by_arm.setdefault(result.cell.arm, []).append(clipping)
+        saturated.setdefault(result.cell.arm, []).append(bool(guarantees.get("saturated")))
+
+    def mean_sd(values: list[float]) -> dict[str, float]:
+        return {"mean": round(statistics.fmean(values), 6),
+                "sd": round(statistics.stdev(values), 6) if len(values) > 1 else 0.0}
+
+    arms: dict[str, Any] = {}
+    for arm, runs in sorted(by_arm.items()):
+        durations = [float(run["mean_duration"]) for run in runs if run["episodes"]]
+        arms[arm] = {
+            "runs": len(runs),
+            "bounds": [runs[0]["min_level"], runs[0]["max_level"]],
+            "clipped_frequency": mean_sd([float(run["clipped_frequency"]) for run in runs]),
+            "clipped_low_share": round(
+                sum(sum(n["clipped_low"] for n in run["per_node"].values()) for run in runs)
+                / max(sum(sum(n["periods"] for n in run["per_node"].values()) for run in runs), 1),
+                6,
+            ),
+            "clipped_high_share": round(
+                sum(sum(n["clipped_high"] for n in run["per_node"].values()) for run in runs)
+                / max(sum(sum(n["periods"] for n in run["per_node"].values()) for run in runs), 1),
+                6,
+            ),
+            "runs_with_clipping": _rates(sum(1 for run in runs if run["episodes"]), len(runs)),
+            "episodes_per_run": mean_sd([float(run["episodes"]) for run in runs]),
+            "mean_episode_duration": mean_sd(durations) if durations else None,
+            "max_episode_duration": max(int(run["max_duration"]) for run in runs),
+            "runs_saturated": _rates(sum(saturated[arm]), len(runs)),
+        }
+    return {
+        "status": STATUS,
+        "definitions": {
+            "clipped": "eps_t at its lower or upper clip bound after the update",
+            "episode": "a maximal run of consecutive clipped scored periods at one node",
+            "saturated": (
+                "the guarantees layer's saturation flag "
+                "(flag rate > 0.5, or no flag in more than 20 scored periods)"
+            ),
+        },
+        "arms": arms,
+    }

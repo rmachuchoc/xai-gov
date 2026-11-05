@@ -33,6 +33,7 @@ EXTRA_BASELINES = {
 }
 MAX_WORKERS = 6
 OUTPUT = "campaigns/confirmatory_v2/posthoc_v2.json"
+DETECTOR_REPORT = "campaigns/detector_exploratory_v2/detector_exploratory_v2_report.json"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -94,6 +95,16 @@ def main(argv: list[str] | None = None) -> int:
         },
         "economics": posthoc_v2.economics(all_results, arm_keys=keys, baselines=baselines),
         "governance_rates": posthoc_v2.governance_rates(all_results),
+        "epsilon_clipping": {
+            "confirmatory": posthoc_v2.epsilon_clipping(results),
+            "detector_exploratory": (
+                posthoc_v2.epsilon_clipping(
+                    posthoc_v2.load_cells(outputs / DETECTOR_REPORT, outputs / "runs")
+                )
+                if (outputs / DETECTOR_REPORT).is_file()
+                else None
+            ),
+        },
         "admissibility": posthoc_v2.admissibility_by_arm(
             all_results, runs_root=outputs / "runs", specifications=specifications,
             workers=args.workers,

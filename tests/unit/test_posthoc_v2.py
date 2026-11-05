@@ -45,3 +45,31 @@ def test_economics_uses_beta_and_the_matching_baseline_only() -> None:
     assert strategic["arms"]["projection"]["rgd"] == round((0.6 - 0.7) / 10.0, 6)
     assert "five_projection" in strategic["unmatched"]
     assert "five_projection" not in strategic["arms"]
+
+
+def test_epsilon_clipping_is_summarized_per_arm() -> None:
+    from xai_gov.analysis.posthoc_v2 import epsilon_clipping
+
+    def run(arm: str, replicate: int, episodes: int) -> CellResult:
+        clipping = {
+            "min_level": 0.005, "max_level": 0.5, "clipped_frequency": 0.02 * episodes,
+            "episodes": episodes, "mean_duration": 2.0 if episodes else 0.0,
+            "max_duration": 3 if episodes else 0,
+            "per_node": {"r": {"periods": 50, "clipped_low": episodes, "clipped_high": 0,
+                               "episodes": episodes}},
+        }
+        return CellResult(
+            cell=CampaignCell(arm=arm, experiment=Path("a.yaml"), replicate=replicate, seed=1),
+            run_name=f"{arm}-{replicate}",
+            kpis={"guarantees": {"status": "available", "saturated": False,
+                                 "epsilon": {"clipping": clipping}}},
+            included=True,
+        )
+
+    summary = epsilon_clipping((run("a", 0, 1), run("a", 1, 0), run("b", 0, 0)))
+    arm = summary["arms"]["a"]
+    assert arm["runs"] == 2
+    assert arm["runs_with_clipping"]["violations"] == 1
+    assert arm["max_episode_duration"] == 3
+    assert arm["clipped_low_share"] == round(1 / 100, 6)
+    assert summary["arms"]["b"]["mean_episode_duration"] is None
