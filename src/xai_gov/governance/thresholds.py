@@ -119,16 +119,100 @@ class ThresholdSolution:
         }
 
 
-def solve_threshold(
+@dataclass(frozen=True, slots=True)
+class BeliefDynamics:
+    """The two-state belief model both solver and runtime filter use."""
+
+    persistence: float = 0.9
+    flag_probability_nominal: float = 0.05
+    flag_probability_disruption: float = 0.80
+
+    def __post_init__(self) -> None:
+        if not 0.0 < self.persistence < 1.0:
+            raise ValueError("persistence must lie in (0, 1)")
+        if not 0.0 < self.flag_probability_nominal < self.flag_probability_disruption < 1.0:
+            raise ValueError("flag probabilities must satisfy 0 < nominal < disruption < 1")
+
+    def predict(self, belief: float) -> float:
+        """One step of the latent dynamics, before any observation."""
+        return self.persistence * belief + (1.0 - self.persistence) * (1.0 - belief)
+
+    def posterior(self, prior: float, flagged: bool) -> float:
+        """Bayes update of the disruption belief on one observation."""
+        d = self.flag_probability_disruption
+        n = self.flag_probability_nominal
+        likelihood_d = d if flagged else 1.0 - d
+        likelihood_n = n if flagged else 1.0 - n
+        numerator = prior * likelihood_d
+        denominator = numerator + (1.0 - prior) * likelihood_n
+        return numerator / denominator if denominator > 0.0 else prior
+
+    def flag_probability(self, prior: float) -> float:
+        return (
+            prior * self.flag_probability_disruption
+            + (1.0 - prior) * self.flag_probability_nominal
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ValueFunction:
+    """The solved value function on the belief grid, and what it implies."""
+
+    grid: tuple[float, ...]
+    values: tuple[float, ...]
+    economics: ThresholdEconomics
+    dynamics: BeliefDynamics
+    iterations: int
+    residual: float
+
+    def at(self, belief: float) -> float:
+        """Linear interpolation of the value function off the grid."""
+        size = len(self.grid)
+        position = belief * (size - 1)
+        lower = int(position)
+        if lower >= size - 1:
+            return self.values[size - 1]
+        weight = position - lower
+        return self.values[lower] * (1.0 - weight) + self.values[lower + 1] * weight
+
+    def continuation(self, belief: float) -> float:
+        """C(b): expected value next period after waiting at belief b."""
+        prior = self.dynamics.predict(belief)
+        flag = self.dynamics.flag_probability(prior)
+        return (
+            flag * self.at(self.dynamics.posterior(prior, True))
+            + (1.0 - flag) * self.at(self.dynamics.posterior(prior, False))
+        )
+
+    def continuation_gap(self, belief: float) -> float:
+        """Delta(b) = C(b) - V(0): what waiting costs in continuation terms."""
+        return self.continuation(belief) - self.at(0.0)
+
+    def margin(self, belief: float) -> float:
+        """D(b) = wait - intervene = b*L + gamma*Delta(b) - c. Intervene iff D >= 0."""
+        economics = self.economics
+        return (
+            belief * economics.disruption_loss
+            + economics.discount * self.continuation_gap(belief)
+            - economics.intervention_cost
+        )
+
+    def threshold(self) -> float:
+        """The first grid belief at which intervening is preferred."""
+        for belief in self.grid:
+            if self.margin(belief) >= 0.0:
+                return belief
+        return 1.0
+
+
+def solve_values(
     economics: ThresholdEconomics,
+    dynamics: BeliefDynamics | None = None,
     *,
-    persistence: float = 0.9,
-    flag_probability_nominal: float = 0.05,
-    flag_probability_disruption: float = 0.80,
     grid_size: int = 201,
     tolerance: float = 1e-9,
     max_iterations: int = 5000,
-) -> ThresholdSolution:
+) -> ValueFunction:
     """Value iteration over the disruption belief.
 
     The state is b, the belief in disruption. Two actions: wait, paying b·L
@@ -142,89 +226,55 @@ def solve_threshold(
     """
     if grid_size < 11:
         raise ValueError("grid_size must be at least 11 for a usable threshold")
-    if not 0.0 < persistence < 1.0:
-        raise ValueError("persistence must lie in (0, 1)")
-    if not 0.0 < flag_probability_nominal < flag_probability_disruption < 1.0:
-        raise ValueError("flag probabilities must satisfy 0 < nominal < disruption < 1")
-
-    grid = [index / (grid_size - 1) for index in range(grid_size)]
-    values = [0.0] * grid_size
+    dynamics = dynamics or BeliefDynamics()
+    grid = tuple(index / (grid_size - 1) for index in range(grid_size))
+    solution = ValueFunction(grid, (0.0,) * grid_size, economics, dynamics, 0, float("inf"))
     discount = economics.discount
-    loss = economics.disruption_loss
-    cost = economics.intervention_cost
-
-    def predict(belief: float) -> float:
-        """One step of the latent dynamics, before any observation."""
-        return persistence * belief + (1.0 - persistence) * (1.0 - belief)
-
-    def posterior(prior: float, flagged: bool) -> float:
-        """Bayes update of the disruption belief on one observation."""
-        likelihood_d = flag_probability_disruption if flagged else 1.0 - flag_probability_disruption
-        likelihood_n = flag_probability_nominal if flagged else 1.0 - flag_probability_nominal
-        numerator = prior * likelihood_d
-        denominator = numerator + (1.0 - prior) * likelihood_n
-        return numerator / denominator if denominator > 0.0 else prior
-
-    def interpolate(belief: float) -> float:
-        """Linear interpolation of the value function off the grid."""
-        position = belief * (grid_size - 1)
-        lower = int(position)
-        if lower >= grid_size - 1:
-            return values[grid_size - 1]
-        weight = position - lower
-        return values[lower] * (1.0 - weight) + values[lower + 1] * weight
-
     residual = float("inf")
     iterations = 0
-    for iterations in range(1, max_iterations + 1):  # noqa: B007 - final value used
-        updated: list[float] = []
-        for belief in grid:
-            prior = predict(belief)
-            flag_probability = (
-                prior * flag_probability_disruption
-                + (1.0 - prior) * flag_probability_nominal
-            )
-            continuation = (
-                flag_probability * interpolate(posterior(prior, True))
-                + (1.0 - flag_probability) * interpolate(posterior(prior, False))
-            )
-            wait = belief * loss + discount * continuation
-            # Intervening restores the nominal regime, so its continuation is
-            # the value at belief zero — which is what makes intervention
-            # attractive beyond the single period the myopic rule considers.
-            intervene = cost + discount * interpolate(0.0)
-            updated.append(min(wait, intervene))
-
-        residual = max(abs(new - old) for new, old in zip(updated, values, strict=True))
-        values = updated
+    for iterations in range(1, max_iterations + 1):
+        # Intervening restores the nominal regime, so its continuation is
+        # the value at belief zero — which is what makes intervention
+        # attractive beyond the single period the myopic rule considers.
+        intervene = economics.intervention_cost + discount * solution.at(0.0)
+        updated = tuple(
+            min(belief * economics.disruption_loss + discount * solution.continuation(belief),
+                intervene)
+            for belief in grid
+        )
+        residual = max(abs(new - old) for new, old in zip(updated, solution.values, strict=True))
+        solution = ValueFunction(grid, updated, economics, dynamics, iterations, residual)
         if residual < tolerance:
             break
+    return solution
 
-    # The threshold is the first grid point at which intervening is preferred.
-    # Theorem 2's single-crossing property means there is exactly one.
-    threshold = 1.0
-    for index, belief in enumerate(grid):
-        prior = predict(belief)
-        flag_probability = (
-            prior * flag_probability_disruption + (1.0 - prior) * flag_probability_nominal
-        )
-        continuation = (
-            flag_probability * interpolate(posterior(prior, True))
-            + (1.0 - flag_probability) * interpolate(posterior(prior, False))
-        )
-        wait = belief * loss + discount * continuation
-        intervene = cost + discount * interpolate(0.0)
-        if intervene <= wait:
-            threshold = belief
-            break
-        del index
 
+def solve_threshold(
+    economics: ThresholdEconomics,
+    *,
+    persistence: float = 0.9,
+    flag_probability_nominal: float = 0.05,
+    flag_probability_disruption: float = 0.80,
+    grid_size: int = 201,
+    tolerance: float = 1e-9,
+    max_iterations: int = 5000,
+) -> ThresholdSolution:
+    """The optimal threshold: the first belief at which D(b) >= 0."""
+    dynamics = BeliefDynamics(
+        persistence=persistence,
+        flag_probability_nominal=flag_probability_nominal,
+        flag_probability_disruption=flag_probability_disruption,
+    )
+    solution = solve_values(
+        economics, dynamics, grid_size=grid_size, tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
     return ThresholdSolution(
-        threshold=threshold,
+        threshold=solution.threshold(),
         myopic=myopic_threshold(economics),
-        iterations=iterations,
-        residual=residual,
-        converged=residual < tolerance,
+        iterations=solution.iterations,
+        residual=solution.residual,
+        converged=solution.residual < tolerance,
         grid_size=grid_size,
         economics=economics,
     )
