@@ -287,6 +287,67 @@ def fig_detector(cells: tuple[Any, ...], null: dict[str, Any] | None, out: Path)
          rows)
 
 
+def fig_network(root: Path, out: Path) -> None:
+    """Figure 1: the serial chain as simulated, drawn from its configuration."""
+    from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+
+    from xai_gov.io.yaml_loader import load_config
+
+    config = load_config(root / "configs/network/three_echelon.yaml", root=root)["network"]
+    defaults = config.get("node_defaults", {})
+    nodes = sorted((defaults | n for n in config["nodes"]), key=lambda n: -n["echelon"])
+    fig, ax = plt.subplots(figsize=(TEXT_WIDTH_IN, 2.5))
+    ax.set_xlim(0, 16.8)
+    ax.set_ylim(0.6, 4.3)
+    ax.axis("off")
+    width, height, y0 = 2.6, 1.9, 1.5
+    xs = [2.6, 7.3, 12.0]
+    upper, lower = y0 + 1.25, y0 + 0.65
+
+    def label(x: float, y: float, text: str, va: str) -> None:
+        ax.text(x, y, text, ha="center", va=va, fontsize=7, color=INK_2, linespacing=1.3)
+
+    def arrow(x0: float, y: float, x1: float, *, dashed: bool, color: str) -> None:
+        ax.add_patch(FancyArrowPatch((x0, y), (x1, y), arrowstyle="-|>", mutation_scale=9,
+                                     linewidth=1.3, color=color,
+                                     linestyle=(0, (4, 3)) if dashed else "-"))
+
+    for x, node in zip(xs, nodes, strict=True):
+        ax.add_patch(FancyBboxPatch((x, y0), width, height,
+                                    boxstyle="round,pad=0.02,rounding_size=0.12",
+                                    facecolor="#eef3fb", edgecolor=ONE, linewidth=1.0))
+        ax.text(x + width / 2, y0 + height - 0.35, node["node_id"], ha="center", va="center",
+                fontsize=8.5, color=INK)
+        ax.text(x + width / 2, y0 + 0.75,
+                f"stock {node['initial_inventory']:g}\ncapacity {node['capacity']:g}\n"
+                f"s {node['reorder_point']:g} · Q {node['order_quantity']:g}",
+                ha="center", va="center", fontsize=7, color=INK_2, linespacing=1.35)
+
+    gap = 0.12
+    for xa, xb, b in zip(xs, xs[1:], nodes[1:], strict=False):
+        middle = (xa + width + xb) / 2
+        arrow(xa + width + gap, upper, xb - gap, dashed=False, color=ONE)
+        label(middle, upper + 0.15, f"shipments\nL = {b['lead_time_mean']:g}", "bottom")
+        arrow(xb - gap, lower, xa + width + gap, dashed=True, color=REFERENCE)
+        label(middle, lower - 0.15, "orders", "top")
+    plant = nodes[0]
+    arrow(0.4, upper, xs[0] - gap, dashed=False, color=ONE)
+    label(1.45, upper + 0.15, f"production\nL = {plant['lead_time_mean']:g}", "bottom")
+    end_x = xs[-1] + width
+    arrow(end_x + gap, upper, 16.6, dashed=False, color=ONE)
+    label((end_x + 16.6) / 2 + 0.15, upper + 0.15, "sales", "bottom")
+    arrow(16.6, lower, end_x + gap, dashed=True, color=REFERENCE)
+    label((end_x + 16.6) / 2 + 0.15, lower - 0.15, "demand", "top")
+    label(xs[-1] + width / 2, y0 + height + 0.2,
+          "demand volatility enters at the retailer", "bottom")
+    ax.text(0.4, 0.85, "Solid arrows: material. Dashed arrows: orders and demand; a supplier "
+            "sees an order one period after it is placed.\nOrders that cannot be filled stay "
+            "as backorders and ship when stock arrives.",
+            ha="left", va="center", fontsize=7, color=INK_2, linespacing=1.4)
+    fig.savefig(out / "fig_v2_network.png", dpi=DPI, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="render the v2 figures")
     parser.add_argument("--outputs-root", required=True)
@@ -299,6 +360,7 @@ def main(argv: list[str] | None = None) -> int:
 
     report = json.loads((outputs / CONFIRMATORY).read_text(encoding="utf-8"))
     cells = load_cells(outputs / CONFIRMATORY, outputs / "runs")
+    fig_network(root, figures)
     fig_beta(cells, figures)
     fig_evidence(report, figures)
     fig_epsilon(cells, figures)
