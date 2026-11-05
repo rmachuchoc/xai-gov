@@ -119,7 +119,6 @@ def fig_beta(cells: tuple[Any, ...], out: Path) -> None:
                     va="center", fontsize=7, color=INK_2, bbox=LABEL_BOX, zorder=4)
     ax.set_xlim(0, 1)
     ax.set_xlabel("fill rate β at the retailer (mean, 95% CI over 500 replicates)")
-    ax.set_title("Fill rate by arm", loc="left")
     save(fig, out, "fig_v2_beta_by_arm", ["arm", "runs", "mean", "ci_low", "ci_high"], rows)
 
 
@@ -140,7 +139,6 @@ def fig_evidence(report: dict[str, Any], out: Path) -> None:
                     bbox=LABEL_BOX, zorder=4)
     ax.set_xlim(-0.9, 1.05)
     ax.set_xlabel("paired difference in β (mean, 95% confidence sequence); threshold e ≥ 240")
-    ax.set_title("Confirmatory hypotheses H1–H6", loc="left")
     save(fig, out, "fig_v2_evidence", ["hypothesis", "comparison", "direction",
                                          "mean_difference", "cs_low", "cs_high", "e_value",
                                          "verdict"], rows)
@@ -158,7 +156,7 @@ def fig_epsilon(cells: tuple[Any, ...], out: Path, arm: str = "projection") -> N
     nodes = sorted(by_node.items())
     fig, axes = plt.subplots(1, len(nodes), figsize=(TEXT_WIDTH_IN, 2.3), sharey=True)
     rows = []
-    for ax, (node, periods) in zip(np.atleast_1d(axes), nodes, strict=True):
+    for letter, ax, (node, periods) in zip("abc", np.atleast_1d(axes), nodes, strict=False):
         t = sorted(periods)
         median = [float(np.median(periods[p])) for p in t]
         low = [float(np.quantile(periods[p], 0.1)) for p in t]
@@ -166,15 +164,12 @@ def fig_epsilon(cells: tuple[Any, ...], out: Path, arm: str = "projection") -> N
         ax.fill_between(t, low, high, color=ONE, alpha=0.18, linewidth=0)
         ax.plot(t, median, color=ONE, linewidth=1.5)
         ax.axhline(0.10, color=REFERENCE, linewidth=0.8)
-        ax.set_title(node, loc="left")
+        ax.set_title(f"({letter}) {node}", loc="left")
         ax.set_xlabel("period")
         rows += [[node, p, round(m, 5), round(lo, 5), round(hi, 5)]
                  for p, m, lo, hi in zip(t, median, low, high, strict=True)]
     first = np.atleast_1d(axes)[0]
     first.set_ylabel("adapted level εₜ")
-    fig.suptitle(f"Adapted level εₜ by node ({arm}; median and 10–90% over runs; "
-                 "grey line: target ε = 0.10)",
-                 x=0.01, ha="left", fontsize=9)
     fig.tight_layout()
     save(fig, out, "fig_v2_epsilon_trajectory", ["node", "period", "median", "p10", "p90"], rows)
 
@@ -186,19 +181,17 @@ def fig_envelope(report: dict[str, Any], out: Path) -> None:
     fig, axes = plt.subplots(1, len(properties), figsize=(TEXT_WIDTH_IN, 3.0), sharey=True,
                              gridspec_kw={"wspace": 0.25})
     rows = []
-    for ax, prop in zip(axes, properties, strict=True):
+    for letter, ax, prop in zip("abc", axes, properties, strict=False):
         entries = [envelope[a]["properties"][prop] for a in arms]
         dot_whisker(ax, arms, [e["frequency"] for e in entries], [e["ci_low"] for e in entries],
                     [e["ci_high"] for e in entries])
         bound = entries[0]["bound"]
         ax.axvline(bound, color=REFERENCE, linewidth=0.8)
         ax.set_xlim(0, 1)
-        ax.set_title(f"{prop} · bound {bound:g}", loc="left")
+        ax.set_title(f"({letter}) {prop}, bound {bound:g}", loc="left")
         rows += [[a, prop, e["frequency"], e["ci_low"], e["ci_high"], bound, e["verdict"]]
                  for a, e in zip(arms, entries, strict=True)]
     axes[1].set_xlabel("violation frequency (one trial per replicate; Clopper–Pearson 95%)")
-    fig.suptitle("Safety properties by arm (grey line: the property's bound)",
-                 x=0.01, y=1.04, ha="left", fontsize=9)
     save(fig, out, "fig_v2_envelope", ["arm", "property", "frequency", "ci_low", "ci_high",
                                          "bound", "verdict"], rows)
 
@@ -208,7 +201,7 @@ def fig_sweeps(sweeps: dict[str, Any], out: Path) -> None:
     fig, axes = plt.subplots(1, len(names), figsize=(TEXT_WIDTH_IN, 2.4))
     axes = np.atleast_1d(axes)
     rows = []
-    for ax, name in zip(axes, names, strict=True):
+    for letter, ax, name in zip("ab", axes, names, strict=False):
         sweep = sweeps["sweeps"][name]
         levels = [lv for lv in sweep["levels"] if lv["ci95"]]
         x = np.arange(len(levels))
@@ -221,16 +214,12 @@ def fig_sweeps(sweeps: dict[str, Any], out: Path) -> None:
         ax.axhline(0, color=REFERENCE, linewidth=0.8)
         ax.set_xticks(x, [lv["label"].split("=")[-1] for lv in levels])
         ax.set_xlabel(sweep["parameter"])
-        ax.set_title({"break_even": "Unit intervention cost",
-                      "severity": "Disruption severity"}[name], loc="left")
+        ax.set_title(f"({letter}) " + {"break_even": "unit intervention cost",
+                                       "severity": "demand volatility"}[name], loc="left")
         ax.grid(axis="x", visible=False)
         rows += [[name, lv["label"], lv["difference"], lv["ci95"][0], lv["ci95"][1]]
                  for lv in levels]
     axes[0].set_ylabel("net value difference")
-    comparison = sweeps["sweeps"][names[0]]["comparison"]
-    fig.suptitle(f"Projection shield minus mediation alone ({comparison}); "
-                 "mean and 95% bootstrap CI",
-                 x=0.01, ha="left", fontsize=9)
     fig.tight_layout()
     save(fig, out, "fig_v2_sweeps", ["sweep", "level", "difference", "ci_low", "ci_high"], rows)
 
@@ -255,8 +244,6 @@ def fig_power(power: dict[str, Any], out: Path, sealed_n: int) -> None:
     ax.set_ylim(0, 1.02)
     ax.set_xlabel("replicates n")
     ax.set_ylabel("simulated power")
-    ax.set_title("Power of aGRAPA at threshold 240, Δβ = 0.05 (worst generator and direction)",
-                 loc="left", fontsize=8)
     ax.legend(frameon=False, loc="center left", bbox_to_anchor=(1.01, 0.5), ncol=1)
     save(fig, out, "fig_v2_power", ["hypothesis", "n", "power"], rows)
 
@@ -276,13 +263,7 @@ def fig_detector(cells: tuple[Any, ...], null: dict[str, Any] | None, out: Path)
                 [r[4] for r in rows])
     ax.axvline(0, color=REFERENCE, linewidth=0.8)
     ax.set_xlabel("coverage error: realized flag rate − 0.10 (mean, 95% CI)")
-    title = "Detector calibration against the fixed target (exploratory)"
-    if null:
-        alarms = [f"{a}: {e['false_alarms_demand_facing']['runs_with_alarm']}/"
-                  f"{e['false_alarms_demand_facing']['runs']}" for a, e in null["arms"].items()]
-        ax.annotate("null line false alarms  " + ", ".join(alarms), (0.0, -0.32),
-                    xycoords="axes fraction", fontsize=7, color=INK_2)
-    ax.set_title(title, loc="left")
+    del null  # the null-line false alarms are stated in the caption
     save(fig, out, "fig_v2_detector_coverage", ["arm", "runs", "mean", "ci_low", "ci_high"],
          rows)
 
@@ -386,7 +367,6 @@ def fig_calibration(root: Path, out: Path) -> None:
     ax.set_xlim(0, 12)
     ax.grid(axis="y", visible=False)
     ax.set_xlabel("posterior predictive distance on held-out statistics (larger is worse)")
-    ax.set_title("Calibration against 30 M5 store-by-category series (weekly)", loc="left")
     fig.savefig(out / "fig_v2_calibration.png", dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     with (out / "fig_v2_calibration.csv").open("w", newline="", encoding="utf-8") as handle:
