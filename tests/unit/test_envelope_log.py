@@ -137,6 +137,9 @@ def test_the_layer_names_its_claim_and_reports_every_property() -> None:
         assert 0.0 <= entry["ci_low"] <= (entry["frequency"] or 0.0) <= entry["ci_high"] <= 1.0
         assert entry["verdict"] in ("within_bound", "exceeds_bound", "inconclusive")
     assert layer["infeasible"]["trials"] == 80
+    assert layer["admissibility"]["counts"]["decisions"] == 80
+    counts = layer["admissibility"]["counts"]
+    assert counts["infeasible_states"] == layer["infeasible"]["violations"]
 
 
 def test_no_records_means_not_available() -> None:
@@ -181,3 +184,42 @@ def test_the_campaign_interval_counts_replicates_not_periods() -> None:
     assert entry["verdict"] == "exceeds_bound"
     assert entry["pooled_descriptive"]["trials"] == 2000
     assert result["infeasible"]["runs_with_infeasible_states"]["violations"] == 0
+
+
+# -- admissibility --------------------------------------------------------------
+def test_the_envelope_keeps_the_raw_lower_bound_and_its_caps() -> None:
+    from xai_gov.verification.shield import Shield
+
+    starved = state(inventory=0.0, in_transit=0.0, capacity=10.0, demand_observed=40.0)
+    envelope = Shield().envelope(starved)
+    assert envelope.raw_minimum is not None and envelope.raw_minimum > 10.0
+    assert envelope.infeasible and envelope.lower_above_capacity
+    assert not envelope.lower_above_max_order
+    assert envelope.minimum == envelope.maximum == 10.0  # resolved, not made safe
+
+
+def test_admissibility_counts_each_failure_over_all_decisions() -> None:
+    from xai_gov.verification.envelope_log import admissibility_counts, admissibility_rates
+
+    healthy = state(inventory=80.0, in_transit=0.0, capacity=120.0, demand_observed=10.0)
+    starved = state(inventory=0.0, in_transit=0.0, capacity=120.0, demand_observed=10.0)
+    infeasible = state(inventory=0.0, in_transit=0.0, capacity=5.0, demand_observed=40.0)
+    entries = {"r": [
+        (healthy, 10.0, 10.0),     # admissible
+        (starved, 0.0, 0.0),       # holding while stocked out: both inadmissible
+        (starved, 0.0, 30.0),      # proposal inadmissible, executed repaired
+        (infeasible, 0.0, 5.0),    # nothing is admissible
+    ]}
+    counts = admissibility_counts(entries, Specification())
+    assert counts["decisions"] == 4
+    assert counts["infeasible_states"] == 1 and counts["lower_above_capacity"] == 1
+    assert counts["proposal_inadmissible"] == 2
+    assert counts["executed_inadmissible"] == 1
+    rates = admissibility_rates(counts)
+    assert rates["rates"]["executed_inadmissible"] == 0.25
+    assert rates["denominator"].startswith("decisions")
+
+
+def test_the_layer_reports_admissibility() -> None:
+    layer = envelope_layer([])
+    assert layer["status"] == "not_available"

@@ -73,6 +73,31 @@ class ActionEnvelope:
     maximum: float
     binding_property: str | None
     reason: str
+    #: The properties' lower bound before a conflict is resolved, and the two
+    #: caps the upper bound is made of. When ``raw_minimum`` exceeds
+    #: ``maximum`` no order satisfies every property: resolving the conflict in
+    #: favour of capacity makes the interval non-empty, not the state safe.
+    raw_minimum: float | None = None
+    capacity: float | None = None
+    max_order: float | None = None
+
+    @property
+    def infeasible(self) -> bool:
+        return self.raw_minimum is not None and self.raw_minimum > self.maximum + 1e-9
+
+    @property
+    def lower_above_capacity(self) -> bool:
+        return (
+            self.raw_minimum is not None and self.capacity is not None
+            and self.raw_minimum > self.capacity + 1e-9
+        )
+
+    @property
+    def lower_above_max_order(self) -> bool:
+        return (
+            self.raw_minimum is not None and self.max_order is not None
+            and self.raw_minimum > self.max_order + 1e-9
+        )
 
     def __post_init__(self) -> None:
         if self.minimum > self.maximum:
@@ -166,6 +191,7 @@ class Shield:
                 maximum, binding, upper_source = upper, prop.property_id, prop.property_id
                 reason = f"{prop.property_id} caps the order at {upper:.1f}"
 
+        raw_minimum = minimum
         if minimum > maximum:
             # The properties conflict here. Capacity wins, because ordering
             # beyond it is not an action the world can execute. The pair is
@@ -180,7 +206,8 @@ class Shield:
             reason = f"{reason} (conflicting properties resolved in favour of capacity)"
 
         return ActionEnvelope(
-            minimum=minimum, maximum=maximum, binding_property=binding, reason=reason
+            minimum=minimum, maximum=maximum, binding_property=binding, reason=reason,
+            raw_minimum=raw_minimum, capacity=state.capacity, max_order=self.max_order,
         )
 
     def _constraint_of(

@@ -239,10 +239,16 @@ def envelope_layer(
     infeasible = infeasible_counts(traces, specification, horizon_lookahead=horizon_lookahead)
     infeasible_total = sum(v for v, _ in infeasible.values())
     states_total = sum(n for _, n in infeasible.values())
+    admissibility = admissibility_rates(
+        admissibility_counts(
+            decisions_by_node(records), specification, horizon_lookahead=horizon_lookahead
+        )
+    )
     return {
         "status": "available",
         "claim": CLAIM,
         "confidence": CONFIDENCE,
+        "admissibility": admissibility,
         "properties": properties,
         "infeasible": {
             **_rates(infeasible_total, states_total),
@@ -319,4 +325,74 @@ def campaign_envelope(
             "infeasible_states": infeasible_v,
             "runs_with_infeasible_states": _rates(runs_with_infeasible, len(available)),
         },
+    }
+
+
+# -- admissibility of what was proposed and what was executed --------------------
+#: (observed state, proposed quantity, executed quantity) of one decision.
+Decision = tuple["OperatingState", float, float]
+
+ADMISSIBILITY_DEFINITIONS = {
+    "decisions": "denominator of every rate: one per node and period",
+    "infeasible_states": (
+        "the properties' lower bound exceeds the upper bound: no order is admissible"
+    ),
+    "lower_above_capacity": "infeasible because the lower bound exceeds the node's capacity",
+    "lower_above_max_order": "infeasible because the lower bound exceeds the shield's max order",
+    "proposal_inadmissible": "in a feasible state, the policy's proposal lies outside the envelope",
+    "executed_inadmissible": "in a feasible state, the executed order lies outside the envelope",
+}
+
+
+def admissibility_counts(
+    entries: dict[str, list[Decision]],
+    specification: Specification,
+    *,
+    horizon_lookahead: int = 1,
+) -> dict[str, int]:
+    """Count admissibility failures, replaying the envelope node by node."""
+    from xai_gov.verification.shield import Shield
+
+    counts = dict.fromkeys(ADMISSIBILITY_DEFINITIONS, 0)
+    for node, decisions in sorted(entries.items()):
+        shield = Shield(specification=specification, horizon_lookahead=horizon_lookahead)
+        window = shield.window_for(node)
+        for state, proposed, executed in decisions:
+            window.append(state)
+            envelope = shield.envelope(state, node_id=node)
+            counts["decisions"] += 1
+            if envelope.infeasible:
+                counts["infeasible_states"] += 1
+                counts["lower_above_capacity"] += int(envelope.lower_above_capacity)
+                counts["lower_above_max_order"] += int(envelope.lower_above_max_order)
+                continue
+            counts["proposal_inadmissible"] += int(not envelope.contains(proposed))
+            counts["executed_inadmissible"] += int(not envelope.contains(executed))
+    return counts
+
+
+def admissibility_rates(counts: dict[str, int]) -> dict[str, Any]:
+    """Counts with their rates over all decisions, and the definitions."""
+    total = counts["decisions"]
+    return {
+        "counts": counts,
+        "rates": {
+            key: round(value / total, 6) if total else None
+            for key, value in counts.items() if key != "decisions"
+        },
+        "denominator": "decisions (node-periods)",
+        "definitions": ADMISSIBILITY_DEFINITIONS,
+    }
+
+
+def decisions_by_node(records: Sequence[DecisionRecord]) -> dict[str, list[Decision]]:
+    """Each node's (state, proposed, executed) in period order."""
+    by_node: dict[str, list[tuple[int, Decision]]] = {}
+    for record in records:
+        by_node.setdefault(record.node_id, []).append(
+            (record.period, (record.state, record.proposed_quantity, record.final_quantity))
+        )
+    return {
+        node: [decision for _, decision in sorted(items, key=lambda item: item[0])]
+        for node, items in sorted(by_node.items())
     }

@@ -69,6 +69,16 @@ def main(argv: list[str] | None = None) -> int:
     }
     baselines = {keys[a]: a for a in ("ungoverned", *EXTRA_BASELINES)}
 
+    from xai_gov.verification.specification import build_specification
+
+    specifications = {}
+    for arm, path in paths.items():
+        verification = plan_experiment(path, settings=settings).config.get("verification") or {}
+        specifications[arm] = (
+            build_specification(verification.get("specification")),
+            int(verification.get("horizon_lookahead", 1)),
+        )
+
     payload = {
         "status": posthoc_v2.STATUS,
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -83,6 +93,11 @@ def main(argv: list[str] | None = None) -> int:
             "status": "exploratory cells outside the sealed plan, paired by replicate seed",
         },
         "economics": posthoc_v2.economics(all_results, arm_keys=keys, baselines=baselines),
+        "governance_rates": posthoc_v2.governance_rates(all_results),
+        "admissibility": posthoc_v2.admissibility_by_arm(
+            all_results, runs_root=outputs / "runs", specifications=specifications,
+            workers=args.workers,
+        ),
     }
     path = outputs / OUTPUT
     path.write_text(canonical_json(payload) + "\n", encoding="utf-8")

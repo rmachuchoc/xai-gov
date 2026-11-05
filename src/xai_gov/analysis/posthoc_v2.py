@@ -108,3 +108,139 @@ def economics(
         "frontier": compute_frontier(arm_values).to_payload(),
         "strategic": {"arms": strategic, "unmatched": unmatched},
     }
+
+
+def _decisions_from_log(path: Path) -> dict[str, list[Any]]:
+    """(state, proposed, executed) per node, in period order, from a decision log."""
+    from xai_gov.io.decision_record import OperatingState
+
+    by_node: dict[str, list[tuple[int, Any]]] = {}
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            entry = json.loads(line)
+            if entry.get("kind") != "decision":
+                continue
+            payload = entry["payload"]
+            state = OperatingState(**payload["state"])
+            by_node.setdefault(payload["node_id"], []).append(
+                (state.period, (state, float(payload["proposed"]["quantity"]),
+                                float(payload["final"]["quantity"])))
+            )
+    return {node: [d for _, d in sorted(items, key=lambda i: i[0])]
+            for node, items in sorted(by_node.items())}
+
+
+def _cell_admissibility(job: tuple[str, str, str, Any, int]) -> tuple[str, int, dict[str, int]]:
+    from xai_gov.verification.envelope_log import admissibility_counts
+
+    arm, run_dir, _, specification, lookahead = job
+    counts = admissibility_counts(
+        _decisions_from_log(Path(run_dir) / "decisions.jsonl"), specification,
+        horizon_lookahead=lookahead,
+    )
+    return arm, 0, counts
+
+
+def admissibility_by_arm(
+    results: tuple[CellResult, ...],
+    *,
+    runs_root: Path,
+    specifications: dict[str, tuple[Any, int]],
+    workers: int = 1,
+) -> dict[str, Any]:
+    """Admissibility failures summed over every run of each arm.
+
+    ``specifications`` gives each arm's declared specification and lookahead,
+    so an unshielded arm is judged against the same envelope as its shielded
+    counterpart. Run-level shares carry Clopper-Pearson intervals (the run is
+    the unit); decision-level rates are pooled and descriptive.
+    """
+    from concurrent.futures import ProcessPoolExecutor
+
+    from xai_gov.verification.envelope_log import (
+        ADMISSIBILITY_DEFINITIONS,
+        _rates,
+        admissibility_rates,
+    )
+
+    jobs = [
+        (r.cell.arm, str(runs_root / r.run_name), r.run_name, *specifications[r.cell.arm])
+        for r in results if r.included and r.cell.arm in specifications
+    ]
+    if workers > 1:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            outcomes = list(pool.map(_cell_admissibility, jobs, chunksize=32))
+    else:
+        outcomes = [_cell_admissibility(job) for job in jobs]
+
+    per_arm: dict[str, list[dict[str, int]]] = {}
+    for arm, _, counts in outcomes:
+        per_arm.setdefault(arm, []).append(counts)
+    summary: dict[str, Any] = {}
+    for arm, runs in sorted(per_arm.items()):
+        totals = {key: sum(run[key] for run in runs) for key in ADMISSIBILITY_DEFINITIONS}
+        summary[arm] = {
+            **admissibility_rates(totals),
+            "runs": len(runs),
+            "runs_with_executed_inadmissible": _rates(
+                sum(1 for run in runs if run["executed_inadmissible"]), len(runs)
+            ),
+            "runs_with_infeasible_states": _rates(
+                sum(1 for run in runs if run["infeasible_states"]), len(runs)
+            ),
+        }
+    return {"status": STATUS, "arms": summary}
+
+
+#: How each mediator action becomes an executable replenishment action (R2.7),
+#: as implemented in governance/cpomdp.py. Every executed action then passes the
+#: arm's shield, which may substitute it.
+MEDIATOR_TO_ACTION = {
+    "approve": "the policy's proposal (action and quantity) as issued",
+    "veto": "hold: order nothing this period",
+    "reduce_autonomy": "hold, and the autonomy regime is lowered for later periods",
+    "activate_safe_mode": "hold, and safe mode is recorded",
+    "escalate (no supervisor review)": "hold while the escalation stands",
+    "escalate (supervisor reviewed)": "the proposal if the supervisor approves, otherwise hold",
+}
+
+RATE_DEFINITIONS = {
+    "intervention_rate": "decisions whose governance action is not approve / all decisions",
+    "veto_rate": "decisions vetoed / all decisions",
+    "escalation_rate": "decisions escalated / all decisions",
+    "shield_activation_rate": (
+        "decisions in which the shield replaced the action (proposal or mediator hold "
+        "outside the envelope) / all decisions"
+    ),
+    "decisions": "one per node and period: nodes x 60 periods per run",
+}
+
+
+def governance_rates(results: tuple[CellResult, ...]) -> dict[str, Any]:
+    """Mean and sd over runs of each arm's governance rates, with their definitions."""
+    import statistics
+
+    keys = ("intervention_rate", "veto_rate", "escalation_rate", "shield_activation_rate")
+    by_arm: dict[str, dict[str, list[float]]] = {}
+    for result in results:
+        if not result.included:
+            continue
+        layer = result.kpis.get("governance") or {}
+        for key in keys:
+            if isinstance(layer.get(key), int | float):
+                by_arm.setdefault(result.cell.arm, {}).setdefault(key, []).append(
+                    float(layer[key])
+                )
+    return {
+        "definitions": RATE_DEFINITIONS,
+        "mediator_to_action": MEDIATOR_TO_ACTION,
+        "arms": {
+            arm: {
+                key: {"mean": round(statistics.fmean(v), 6),
+                      "sd": round(statistics.stdev(v), 6) if len(v) > 1 else 0.0,
+                      "runs": len(v)}
+                for key, v in sorted(values.items())
+            }
+            for arm, values in sorted(by_arm.items())
+        },
+    }
