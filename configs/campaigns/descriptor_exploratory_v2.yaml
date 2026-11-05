@@ -1,0 +1,41 @@
+# The v1 descriptor comparison (RQ3), re-run on the v2 engine as EXPLORATORY
+# (decision 5: descriptor analyses left the confirmatory family). Not sealed.
+# Same seed and replicates as the confirmatory campaign, so `projection`
+# reproduces its cells and every contrast is paired with it.
+campaign: descriptor_exploratory_v2
+alpha: 0.05
+minimum_replicates: 30
+replicates: 500
+base_seed: 20261107
+
+arms:
+  causal: configs/experiments/shielded_causal.yaml
+  posthoc: configs/experiments/shielded_posthoc.yaml
+  projection: configs/experiments/high_vol_shielded.yaml
+
+hypotheses:
+  - id: RQ3
+    question: Does the causal descriptor reduce intervention relative to the post-hoc one?
+    indicator: governance.intervention_rate
+    treatment: causal
+    control: posthoc
+    direction: less
+    predicted_effect: 0.2
+    rationale: As in v1 (same arms and indicator).
+  - id: RQ3b
+    question: Does the causal descriptor change the fill rate relative to the post-hoc one?
+    indicator: operational.fill_rate
+    treatment: causal
+    control: posthoc
+    direction: different
+    predicted_effect: 0.05
+  - id: RQ3c
+    question: Does the post-hoc descriptor with recourse relief differ from projection without it?
+    indicator: operational.fill_rate
+    treatment: posthoc
+    control: projection
+    direction: different
+    predicted_effect: 0.05
+    rationale: Checks the v1 statement that the correlational descriptor arm was identical to the arm without a descriptor.
+
+notes: Exploratory. k = 3 within this family; no familywise claim across families.
