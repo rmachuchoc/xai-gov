@@ -15,17 +15,17 @@ from xai_gov.analysis.figures import (
 
 AGGREGATES = {
     "ungoverned": {
-        "operational.service_level": {"mean": 0.611, "sd": 0.051, "n": 40},
+        "operational.fill_rate": {"mean": 0.611, "sd": 0.051, "n": 40},
         "governance.intervention_rate": {"mean": 0.0, "sd": 0.0, "n": 40},
     },
     "governed": {
-        "operational.service_level": {"mean": 0.059, "sd": 0.027, "n": 40},
+        "operational.fill_rate": {"mean": 0.059, "sd": 0.027, "n": 40},
         "governance.intervention_rate": {"mean": 0.416, "sd": 0.031, "n": 40},
         "guarantees.ood_rate": {"mean": 0.0, "sd": 0.0, "n": 40},
         "guarantees.mean_nominal_level": {"mean": 0.158, "sd": 0.004, "n": 40},
     },
     "shielded": {
-        "operational.service_level": {"mean": 0.670, "sd": 0.042, "n": 40},
+        "operational.fill_rate": {"mean": 0.670, "sd": 0.042, "n": 40},
         "governance.intervention_rate": {"mean": 0.654, "sd": 0.035, "n": 40},
         "guarantees.ood_rate": {"mean": 0.002, "sd": 0.001, "n": 40},
         "guarantees.mean_nominal_level": {"mean": 0.138, "sd": 0.006, "n": 40},
@@ -35,7 +35,7 @@ AGGREGATES = {
 HYPOTHESES = [
     {
         "id": "RQ8",
-        "indicator": "operational.service_level",
+        "indicator": "operational.fill_rate",
         "treatment": "shielded",
         "control": "unshielded",
         "pairs": 40,
@@ -49,7 +49,7 @@ HYPOTHESES = [
     },
     {
         "id": "RQ4",
-        "indicator": "operational.service_level",
+        "indicator": "operational.fill_rate",
         "treatment": "governed",
         "control": "ungoverned",
         "pairs": 40,
@@ -105,7 +105,7 @@ def test_a_series_omits_arms_without_the_indicator() -> None:
 
 def test_grouped_bars_carry_both_series() -> None:
     chart = grouped_bars(
-        series_from_aggregates(AGGREGATES, "operational.service_level"),
+        series_from_aggregates(AGGREGATES, "operational.fill_rate"),
         series_from_aggregates(AGGREGATES, "governance.intervention_rate"),
         arms=["ungoverned", "governed", "shielded"],
         primary_label="service level",
@@ -215,10 +215,10 @@ def test_markup_is_escaped() -> None:
     """An arm name is data, and data that reaches markup unescaped is a way to
     produce a figure that silently fails to render."""
     aggregates = {
-        "a<b>": {"operational.service_level": {"mean": 0.5, "sd": 0.1, "n": 2}}
+        "a<b>": {"operational.fill_rate": {"mean": 0.5, "sd": 0.1, "n": 2}}
     }
     chart = grouped_bars(
-        series_from_aggregates(aggregates, "operational.service_level"),
+        series_from_aggregates(aggregates, "operational.fill_rate"),
         ArmSeries(indicator="x", values={}),
         arms=["a<b>"],
     )

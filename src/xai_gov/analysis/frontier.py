@@ -69,9 +69,9 @@ THEOREM_3_OBJECTIVES: tuple[Objective, ...] = (
     ),
     Objective(
         name="operational_return",
-        indicator="operational.service_level",
+        indicator="operational.fill_rate",
         maximize=True,
-        description="service level attained",
+        description="fill rate beta at the retailer (customer units served on time)",
     ),
 )
 

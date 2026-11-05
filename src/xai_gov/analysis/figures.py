@@ -653,7 +653,7 @@ def build_figures(
                 figures[f"fig0_network_{name}.svg"] = diagram
 
     arms = sorted(aggregates)
-    service = series_from_aggregates(aggregates, "operational.service_level")
+    service = series_from_aggregates(aggregates, "operational.fill_rate")
     intervention = series_from_aggregates(aggregates, "governance.intervention_rate")
     if service.values:
         # Annotated so the literal tuple does not narrow the element type: the
@@ -664,7 +664,7 @@ def build_figures(
             service,
             intervention,
             arms=headline or arms[:3],
-            primary_label="service level",
+            primary_label="fill rate β",
             secondary_label="intervention rate",
         )
         if chart:

@@ -25,8 +25,10 @@ from xai_gov.core.hashing import canonical_json
 #: Indicators pulled into the flat cell table. Anything a hypothesis or the
 #: frontier refers to must be here, or the table cannot be used to check them.
 CELL_INDICATORS: tuple[str, ...] = (
-    "operational.service_level",
     "operational.fill_rate",
+    "operational.fill_rate_after_startup",
+    "operational.service_level",
+    "operational.avg_customer_backlog",
     "operational.stockout_periods",
     "operational.mean_backlog",
     "operational.average_inventory",
@@ -611,13 +613,13 @@ def digest(bundle: dict[str, Any], findings: list[Finding], aggregates: dict[str
 
     lines += [
         "",
-        "## Per-arm service level and intervention",
+        "## Per-arm fill rate and intervention",
         "",
-        "| arm | service level | sd | intervention rate | sd | coverage error |",
+        "| arm | fill rate beta | sd | intervention rate | sd | coverage error |",
         "| --- | --- | --- | --- | --- | --- |",
     ]
     for arm, indicators in aggregates.items():
-        service = indicators.get("operational.service_level", {})
+        service = indicators.get("operational.fill_rate", {})
         intervention = indicators.get("governance.intervention_rate", {})
         coverage = indicators.get("guarantees.coverage_error", {})
         lines.append(
@@ -720,11 +722,11 @@ def manuscript_tables(bundle: dict[str, Any], aggregates: dict[str, Any]) -> str
         "",
         "## Table 2 · Per-arm outcomes",
         "",
-        "| Arm | Service level | sd | Intervention rate | sd | Coverage error |",
+        "| Arm | Fill rate beta | sd | Intervention rate | sd | Coverage error |",
         "| --- | --- | --- | --- | --- | --- |",
     ]
     for arm, indicators in aggregates.items():
-        service = indicators.get("operational.service_level", {})
+        service = indicators.get("operational.fill_rate", {})
         intervention = indicators.get("governance.intervention_rate", {})
         coverage = indicators.get("guarantees.abs_coverage_error", {})
         lines.append(

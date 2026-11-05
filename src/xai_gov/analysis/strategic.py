@@ -88,7 +88,7 @@ def strategic_value(
     baseline: str,
     governed: list[dict[str, Any]],
     ungoverned: list[dict[str, Any]],
-    benefit_indicator: str = "operational.service_level",
+    benefit_indicator: str = "operational.fill_rate",
 ) -> StrategicValue | None:
     """Compute the strategic indicators for one arm against its baseline.
 

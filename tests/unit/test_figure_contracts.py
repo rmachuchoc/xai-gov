@@ -20,7 +20,7 @@ from xai_gov.analysis.strategic import strategic_value
 
 def kpis(service: float, cost: float = 10.0) -> dict:  # type: ignore[type-arg]
     return {
-        "operational": {"service_level": service},
+        "operational": {"fill_rate": service},
         "governance": {
             "total_intervention_cost": cost,
             "decisions": 30.0,
