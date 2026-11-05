@@ -1,0 +1,54 @@
+# The v1 detector ablations (RQ6, RQ6b, RQ6c, RQ6d), re-run on the v2 engine as
+# EXPLORATORY analyses (decision 5: they left the confirmatory family). Not
+# sealed: the report says so. Coverage error is the realized flag rate minus the
+# fixed target 0.10 (decision 7; R1.4). Same seed and replicates as the
+# confirmatory campaign, so the `shielded` arm reproduces its projection cells.
+campaign: detector_exploratory_v2
+alpha: 0.05
+minimum_replicates: 30
+replicates: 500
+base_seed: 20261107
+
+arms:
+  reference_scale: configs/experiments/high_vol_reference_scale.yaml
+  governed_split: configs/experiments/high_vol_governed_split.yaml
+  shielded: configs/experiments/high_vol_shielded.yaml
+  long_memory: configs/experiments/high_vol_long_memory.yaml
+  contaminated: configs/experiments/high_vol_contaminated.yaml
+
+hypotheses:
+  - id: RQ6
+    question: Does the adaptive scheme hold coverage better than the classical split scheme?
+    indicator: guarantees.abs_coverage_error
+    treatment: reference_scale
+    control: governed_split
+    direction: less
+    predicted_effect: 0.10
+    rationale: >-
+      As in v1. The split arm also lacks the causal descriptor and the shield, so
+      this contrast is not a pure detector comparison.
+  - id: RQ6b
+    question: Does freezing the dispersion estimate change coverage?
+    indicator: guarantees.abs_coverage_error
+    treatment: reference_scale
+    control: shielded
+    direction: less
+    predicted_effect: 0.08
+  - id: RQ6c
+    question: Does a long-memory calibration window change coverage?
+    indicator: guarantees.abs_coverage_error
+    treatment: long_memory
+    control: shielded
+    direction: less
+    predicted_effect: 0.03
+  - id: RQ6d
+    question: Does excluding the forecaster's warm-up scores from calibration change coverage?
+    indicator: guarantees.abs_coverage_error
+    treatment: shielded
+    control: contaminated
+    direction: less
+    predicted_effect: 0.12
+
+notes: >-
+  Exploratory. k = 4 within this family; no familywise claim is made across the
+  confirmatory and exploratory families.
