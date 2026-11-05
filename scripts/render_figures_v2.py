@@ -1,0 +1,304 @@
+#!/usr/bin/env python
+"""Figures of the v2 results, read from outputs/v2 (step 5 of the revision).
+
+    python scripts/render_figures_v2.py --outputs-root outputs/v2
+
+Writes PNG (300 dpi), PDF and a CSV table view of every figure to
+<outputs-root>/figures/. Nothing is hard-coded: each value is read from the
+campaign reports, the stored cells, the sweeps, the power simulation and the
+null line. The manuscript is not touched.
+
+Colour: one hue for single-measure figures; the reference palette's first slots
+for the eps_t nodes (three, validated all-pairs) and the power curves (six,
+validated adjacent), each line direct-labelled. Grey for reference lines.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import statistics
+import sys
+from pathlib import Path
+from typing import Any
+
+try:
+    import matplotlib
+except ImportError:  # pragma: no cover - environment guidance
+    print("matplotlib is required: pip install -e '.[figures]'", file=sys.stderr)
+    raise SystemExit(2) from None
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+from xai_gov.analysis.posthoc_v2 import load_cells
+
+TEXT_WIDTH_IN = 170.0 / 25.4
+SURFACE = "#fcfcfb"
+INK = "#0b0b0b"
+INK_2 = "#52514e"
+GRID = "#e6e5e0"
+REFERENCE = "#8a8984"
+SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]
+ONE = SERIES[0]
+
+CONFIRMATORY = "campaigns/confirmatory_v2/confirmatory_v2_report.json"
+DETECTOR = "campaigns/detector_exploratory_v2/detector_exploratory_v2_report.json"
+ARM_ORDER = ["ungoverned", "governed", "fallback", "projection", "backup",
+             "q_fallback", "q_projection", "five_fallback", "five_projection"]
+
+
+def style() -> None:
+    plt.rcParams.update({
+        "font.size": 8, "axes.titlesize": 9, "axes.labelsize": 8, "xtick.labelsize": 7,
+        "ytick.labelsize": 7, "legend.fontsize": 7, "axes.edgecolor": GRID,
+        "axes.labelcolor": INK_2, "xtick.color": INK_2, "ytick.color": INK_2,
+        "text.color": INK, "axes.grid": True, "grid.color": GRID, "grid.linewidth": 0.6,
+        "axes.spines.top": False, "axes.spines.right": False, "figure.facecolor": SURFACE,
+        "axes.facecolor": SURFACE, "savefig.facecolor": SURFACE, "axes.axisbelow": True,
+    })
+
+
+def save(fig: Any, directory: Path, name: str, header: list[str], rows: list[list[Any]]) -> None:
+    fig.savefig(directory / f"{name}.png", dpi=300, bbox_inches="tight")
+    fig.savefig(directory / f"{name}.pdf", bbox_inches="tight")
+    plt.close(fig)
+    with (directory / f"{name}.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(header)
+        writer.writerows(rows)
+
+
+def mean_ci(values: list[float]) -> tuple[float, float, float]:
+    mean = statistics.fmean(values)
+    half = 1.96 * statistics.stdev(values) / len(values) ** 0.5 if len(values) > 1 else 0.0
+    return mean, mean - half, mean + half
+
+
+def dot_whisker(ax: Any, labels: list[str], means: list[float], lows: list[float],
+                highs: list[float]) -> None:
+    y = np.arange(len(labels))[::-1]
+    ax.hlines(y, lows, highs, color=ONE, linewidth=1.6)
+    ax.plot(means, y, "o", color=ONE, markersize=4.5, markeredgecolor=SURFACE,
+            markeredgewidth=1.0, zorder=3)
+    ax.set_yticks(y, labels)
+    ax.grid(axis="y", visible=False)
+
+
+# -- figures --------------------------------------------------------------------
+def fig_beta(cells: tuple[Any, ...], out: Path) -> None:
+    rows = []
+    for arm in ARM_ORDER:
+        values = [r.indicator("operational.fill_rate") for r in cells
+                  if r.included and r.cell.arm == arm]
+        values = [v for v in values if v is not None]
+        if values:
+            m, lo, hi = mean_ci(values)
+            rows.append([arm, len(values), round(m, 4), round(lo, 4), round(hi, 4)])
+    fig, ax = plt.subplots(figsize=(TEXT_WIDTH_IN * 0.62, 2.8))
+    dot_whisker(ax, [r[0] for r in rows], [r[2] for r in rows], [r[3] for r in rows],
+                [r[4] for r in rows])
+    for i, r in enumerate(rows[::-1]):
+        ax.annotate(f"{r[2]:.3f}", (r[4], i), xytext=(4, 0), textcoords="offset points",
+                    va="center", fontsize=7, color=INK_2)
+    ax.set_xlim(0, 1)
+    ax.set_xlabel("fill rate β at the retailer (mean, 95% CI over 500 replicates)")
+    ax.set_title("Fill rate by arm", loc="left")
+    save(fig, out, "fig_v2_beta_by_arm", ["arm", "runs", "mean", "ci_low", "ci_high"], rows)
+
+
+def fig_evidence(report: dict[str, Any], out: Path) -> None:
+    rows = []
+    for h in report["hypotheses"]:
+        cs = h["confidence_sequence"]
+        rows.append([h["id"], f"{h['treatment']} − {h['control']}", h["direction"],
+                     round(h["mean_difference"], 4), round(cs["lower"], 4),
+                     round(cs["upper"], 4), h["evidence"]["forward_e_value"], h["verdict"]])
+    fig, ax = plt.subplots(figsize=(TEXT_WIDTH_IN * 0.75, 2.6))
+    labels = [f"{r[0]}  {r[1]}" for r in rows]
+    dot_whisker(ax, labels, [r[3] for r in rows], [r[4] for r in rows], [r[5] for r in rows])
+    ax.axvline(0, color=REFERENCE, linewidth=0.8)
+    for i, r in enumerate(rows[::-1]):
+        ax.annotate(f"e = {r[6]:.1e}", (max(r[5], 0.0), i), xytext=(6, 0),
+                    textcoords="offset points", va="center", fontsize=7, color=INK_2)
+    ax.set_xlim(-0.9, 1.05)
+    ax.set_xlabel("paired difference in β (mean, 95% confidence sequence); threshold e ≥ 240")
+    ax.set_title("Confirmatory hypotheses H1–H6", loc="left")
+    save(fig, out, "fig_v2_evidence", ["hypothesis", "comparison", "direction",
+                                         "mean_difference", "cs_low", "cs_high", "e_value",
+                                         "verdict"], rows)
+
+
+def fig_epsilon(cells: tuple[Any, ...], out: Path, arm: str = "projection") -> None:
+    by_node: dict[str, dict[int, list[float]]] = {}
+    for r in cells:
+        if not r.included or r.cell.arm != arm:
+            continue
+        trajectory = ((r.kpis.get("guarantees") or {}).get("epsilon") or {}).get("trajectory")
+        for node, points in (trajectory or {}).items():
+            for period, level in points:
+                by_node.setdefault(node, {}).setdefault(int(period), []).append(float(level))
+    nodes = sorted(by_node.items())
+    fig, axes = plt.subplots(1, len(nodes), figsize=(TEXT_WIDTH_IN, 2.3), sharey=True)
+    rows = []
+    for ax, (node, periods) in zip(np.atleast_1d(axes), nodes, strict=True):
+        t = sorted(periods)
+        median = [float(np.median(periods[p])) for p in t]
+        low = [float(np.quantile(periods[p], 0.1)) for p in t]
+        high = [float(np.quantile(periods[p], 0.9)) for p in t]
+        ax.fill_between(t, low, high, color=ONE, alpha=0.18, linewidth=0)
+        ax.plot(t, median, color=ONE, linewidth=1.5)
+        ax.axhline(0.10, color=REFERENCE, linewidth=0.8)
+        ax.set_title(node, loc="left")
+        ax.set_xlabel("period")
+        rows += [[node, p, round(m, 5), round(lo, 5), round(hi, 5)]
+                 for p, m, lo, hi in zip(t, median, low, high, strict=True)]
+    first = np.atleast_1d(axes)[0]
+    first.set_ylabel("adapted level εₜ")
+    fig.suptitle(f"Adapted level εₜ by node ({arm}; median and 10–90% over runs; "
+                 "grey line: target ε = 0.10)",
+                 x=0.01, ha="left", fontsize=9)
+    fig.tight_layout()
+    save(fig, out, "fig_v2_epsilon_trajectory", ["node", "period", "median", "p10", "p90"], rows)
+
+
+def fig_envelope(report: dict[str, Any], out: Path) -> None:
+    envelope = report["envelope"]
+    arms = [a for a in ARM_ORDER if a in envelope and envelope[a].get("status") == "available"]
+    properties = sorted(envelope[arms[0]]["properties"])
+    fig, axes = plt.subplots(1, len(properties), figsize=(TEXT_WIDTH_IN, 2.8), sharey=True)
+    rows = []
+    for ax, prop in zip(axes, properties, strict=True):
+        entries = [envelope[a]["properties"][prop] for a in arms]
+        dot_whisker(ax, arms, [e["frequency"] for e in entries], [e["ci_low"] for e in entries],
+                    [e["ci_high"] for e in entries])
+        bound = entries[0]["bound"]
+        ax.axvline(bound, color=REFERENCE, linewidth=0.8)
+        ax.annotate(f"bound {bound:g}", (bound, len(arms) - 0.4), xytext=(3, 0),
+                    textcoords="offset points", fontsize=7, color=INK_2)
+        ax.set_xlim(0, 1)
+        ax.set_title(prop, loc="left")
+        rows += [[a, prop, e["frequency"], e["ci_low"], e["ci_high"], bound, e["verdict"]]
+                 for a, e in zip(arms, entries, strict=True)]
+    axes[1].set_xlabel("violation frequency (one trial per replicate; Clopper–Pearson 95%)")
+    save(fig, out, "fig_v2_envelope", ["arm", "property", "frequency", "ci_low", "ci_high",
+                                         "bound", "verdict"], rows)
+
+
+def fig_sweeps(sweeps: dict[str, Any], out: Path) -> None:
+    names = [n for n in ("break_even", "severity") if n in sweeps["sweeps"]]
+    fig, axes = plt.subplots(1, len(names), figsize=(TEXT_WIDTH_IN, 2.4))
+    axes = np.atleast_1d(axes)
+    rows = []
+    for ax, name in zip(axes, names, strict=True):
+        sweep = sweeps["sweeps"][name]
+        levels = [lv for lv in sweep["levels"] if lv["ci95"]]
+        x = np.arange(len(levels))
+        means = [lv["difference"] for lv in levels]
+        lows = [lv["ci95"][0] for lv in levels]
+        highs = [lv["ci95"][1] for lv in levels]
+        ax.vlines(x, lows, highs, color=ONE, linewidth=1.6)
+        ax.plot(x, means, "o", color=ONE, markersize=4.5, markeredgecolor=SURFACE,
+                markeredgewidth=1.0, zorder=3)
+        ax.axhline(0, color=REFERENCE, linewidth=0.8)
+        ax.set_xticks(x, [lv["label"].split("=")[-1] for lv in levels])
+        ax.set_xlabel(sweep["parameter"])
+        ax.set_title({"break_even": "Unit intervention cost",
+                      "severity": "Disruption severity"}[name], loc="left")
+        ax.grid(axis="x", visible=False)
+        rows += [[name, lv["label"], lv["difference"], lv["ci95"][0], lv["ci95"][1]]
+                 for lv in levels]
+    axes[0].set_ylabel("net value difference")
+    comparison = sweeps["sweeps"][names[0]]["comparison"]
+    fig.suptitle(f"Projection shield minus mediation alone ({comparison}); "
+                 "mean and 95% bootstrap CI",
+                 x=0.01, ha="left", fontsize=9)
+    fig.tight_layout()
+    save(fig, out, "fig_v2_sweeps", ["sweep", "level", "difference", "ci_low", "ci_high"], rows)
+
+
+def fig_power(power: dict[str, Any], out: Path, sealed_n: int) -> None:
+    fig, ax = plt.subplots(figsize=(TEXT_WIDTH_IN * 0.62, 2.6))
+    rows = []
+    for color, h in zip(SERIES, power["hypotheses"], strict=False):
+        cases = [c for g in h["generators"].values() for c in g["by_shift"]]
+        n_values = sorted(int(n) for n in cases[0]["curve"])
+        worst = [min(c["curve"][str(n)] for c in cases) for n in n_values]
+        ax.plot(n_values, worst, color=color, linewidth=1.5, label=h["hypothesis"])
+        rows += [[h["hypothesis"], n, p] for n, p in zip(n_values, worst, strict=True)]
+    ax.axhline(0.80, color=REFERENCE, linewidth=0.8)
+    ax.axvline(sealed_n, color=REFERENCE, linewidth=0.8)
+    ax.annotate(f"sealed n = {sealed_n}", (sealed_n, 0.62), xytext=(-3, 0),
+                textcoords="offset points", fontsize=7, color=INK_2, ha="right")
+    ax.annotate("power 0.80", (0, 0.80), xytext=(3, 3), textcoords="offset points",
+                fontsize=7, color=INK_2)
+    ax.set_xlim(0, 700)
+    ax.set_ylim(0, 1.02)
+    ax.set_xlabel("replicates n")
+    ax.set_ylabel("simulated power (worst generator and direction)")
+    ax.set_title("Power of aGRAPA at threshold 240, Δβ = 0.05", loc="left")
+    ax.legend(frameon=False, loc="lower right", ncol=2)
+    save(fig, out, "fig_v2_power", ["hypothesis", "n", "power"], rows)
+
+
+def fig_detector(cells: tuple[Any, ...], null: dict[str, Any] | None, out: Path) -> None:
+    order = ["shielded", "contaminated", "long_memory", "reference_scale", "governed_split"]
+    rows = []
+    for arm in order:
+        values = [r.indicator("guarantees.coverage_error") for r in cells
+                  if r.included and r.cell.arm == arm]
+        values = [v for v in values if v is not None]
+        if values:
+            m, lo, hi = mean_ci(values)
+            rows.append([arm, len(values), round(m, 4), round(lo, 4), round(hi, 4)])
+    fig, ax = plt.subplots(figsize=(TEXT_WIDTH_IN * 0.62, 2.2))
+    dot_whisker(ax, [r[0] for r in rows], [r[2] for r in rows], [r[3] for r in rows],
+                [r[4] for r in rows])
+    ax.axvline(0, color=REFERENCE, linewidth=0.8)
+    ax.set_xlabel("coverage error: realized flag rate − 0.10 (mean, 95% CI)")
+    title = "Detector calibration against the fixed target (exploratory)"
+    if null:
+        alarms = [f"{a}: {e['false_alarms_demand_facing']['runs_with_alarm']}/"
+                  f"{e['false_alarms_demand_facing']['runs']}" for a, e in null["arms"].items()]
+        ax.annotate("null line false alarms  " + ", ".join(alarms), (0.0, -0.32),
+                    xycoords="axes fraction", fontsize=7, color=INK_2)
+    ax.set_title(title, loc="left")
+    save(fig, out, "fig_v2_detector_coverage", ["arm", "runs", "mean", "ci_low", "ci_high"],
+         rows)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="render the v2 figures")
+    parser.add_argument("--outputs-root", required=True)
+    args = parser.parse_args(argv)
+    root = Path(__file__).resolve().parents[1]
+    outputs = Path(args.outputs_root).resolve()
+    figures = outputs / "figures"
+    figures.mkdir(parents=True, exist_ok=True)
+    style()
+
+    report = json.loads((outputs / CONFIRMATORY).read_text(encoding="utf-8"))
+    cells = load_cells(outputs / CONFIRMATORY, outputs / "runs")
+    fig_beta(cells, figures)
+    fig_evidence(report, figures)
+    fig_epsilon(cells, figures)
+    fig_envelope(report, figures)
+    fig_power(json.loads((root / "specs/v2/power_v2.json").read_text(encoding="utf-8")),
+              figures, int(report["plan"]["replicates"]))
+    sweeps_path = outputs / "sweeps/sweeps.json"
+    if sweeps_path.is_file():
+        fig_sweeps(json.loads(sweeps_path.read_text(encoding="utf-8")), figures)
+    if (outputs / DETECTOR).is_file():
+        null_path = outputs / "analysis/detector_null.json"
+        null = json.loads(null_path.read_text(encoding="utf-8")) if null_path.is_file() else None
+        fig_detector(load_cells(outputs / DETECTOR, outputs / "runs"), null, figures)
+    print(f"  -> {figures}")
+    for path in sorted(figures.glob("fig_v2_*.png")):
+        print(f"     {path.name}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

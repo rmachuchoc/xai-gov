@@ -18,7 +18,7 @@ PYTEST_ENV := $(SAFE_ENV) PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 PYTEST_PLUGINS_ARGS :=
 COV_PLUGIN := -p pytest_cov
 
-.PHONY: install test cov lint types check info tree doctor doctor-raw run study study-amend study-quick sweeps detector-null figures m5 demand calibrate caltable clean
+.PHONY: install test cov lint types check info tree doctor doctor-raw run study study-amend study-quick sweeps detector-null figures figures-v2 m5 demand calibrate caltable clean
 
 install:
 	$(PIP) install --upgrade pip wheel setuptools
@@ -112,6 +112,10 @@ caltable:
 
 figures:
 	$(SAFE_ENV) $(PY) scripts/render_figures.py --dpi $(DPI)
+
+# The v2 figures (PNG 300 dpi, PDF and a CSV table per figure) from outputs/v2.
+figures-v2:
+	$(SAFE_ENV) $(PY) scripts/render_figures_v2.py --outputs-root outputs/v2
 
 study-amend:
 	$(MAKE) study AMEND=--amend-seal
