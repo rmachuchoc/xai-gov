@@ -162,10 +162,25 @@ def fig_beta(cells: tuple[Any, ...], out: Path) -> None:
     save(fig, out, "fig_v2_beta_by_arm", ["arm", "runs", "mean", "ci_low", "ci_high"], rows)
 
 
-def fig_evidence(report: dict[str, Any], out: Path) -> None:
+def betting_sequences(report_path: Path) -> dict[str, dict[str, Any]]:
+    """The betting confidence sequences written by recompute_cs_v2.py.
+
+    They replace the empirical-Bernstein intervals stored in the report, which
+    is left as sealed. A missing file is an error, not a silent fallback: the
+    figure must not quietly go back to the interval that was withdrawn.
+    """
+    path = report_path.parent / "confidence_sequences_v2.json"
+    if not path.is_file():
+        raise SystemExit(f"{path} is missing: run scripts/recompute_cs_v2.py first")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return {h["id"]: h["confidence_sequence"] for h in payload["hypotheses"]}
+
+
+def fig_evidence(report: dict[str, Any], sequences: dict[str, dict[str, Any]],
+                 out: Path) -> None:
     rows = []
     for h in report["hypotheses"]:
-        cs = h["confidence_sequence"]
+        cs = sequences[h["id"]]
         rows.append([h["id"], f"{h['treatment']} − {h['control']}", h["direction"],
                      round(h["mean_difference"], 4), round(cs["lower"], 4),
                      round(cs["upper"], 4), h["evidence"]["forward_e_value"], h["verdict"]])
@@ -429,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
     fig_network(root, figures)
     fig_calibration(root, figures)
     fig_beta(cells, figures)
-    fig_evidence(report, figures)
+    fig_evidence(report, betting_sequences(outputs / CONFIRMATORY), figures)
     fig_epsilon(cells, figures)
     fig_envelope(report, figures)
     fig_power(json.loads((root / "specs/v2/power_v2.json").read_text(encoding="utf-8")),
