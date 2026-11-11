@@ -28,9 +28,15 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from xai_gov.analysis.agrapa import BET_CAP
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 _LOG_CAP = 700.0
+CS_PROCEDURE = "betting confidence sequence: inverted two-sided aGRAPA e-process"
 
 
 @dataclass(frozen=True, slots=True)
@@ -354,8 +360,10 @@ class ConfidenceSequence:
     A confidence sequence is valid at all sample sizes at once, so it can be
     monitored — which is what a running campaign needs.
 
-    Built on the empirical-Bernstein bound: wider than a t-interval at any given
-    n, and that width is the honest price of being allowed to look whenever.
+    Built by inverting the same aGRAPA betting e-process that decides the
+    hypotheses (see :func:`confidence_sequence`), so the interval and the test
+    cannot disagree about zero in the direction that matters: a supported
+    hypothesis always has an interval that excludes it.
     """
 
     mean: float
@@ -363,6 +371,7 @@ class ConfidenceSequence:
     upper: float
     n: int
     alpha: float
+    procedure: str = CS_PROCEDURE
 
     @property
     def excludes_zero(self) -> bool:
@@ -381,13 +390,73 @@ class ConfidenceSequence:
             "n": self.n,
             "alpha": self.alpha,
             "excludes_zero": self.excludes_zero,
+            "procedure": self.procedure,
         }
+
+
+def two_sided_peak_log_wealth(
+    values: Sequence[float], nulls: Any, *, scale: float = 1.0
+) -> Any:
+    """Running maximum of the two-sided aGRAPA log-wealth at each null mean.
+
+    For a candidate mean ``m`` the bets are placed on x_i = (d_i - m) / scale,
+    with exactly the plug-ins of :class:`xai_gov.analysis.agrapa.AgrapaEProcess`
+    (prior mean 0 and variance 1, each worth one observation; bet clipped to
+    [0, 1/2]), once on x and once on -x, and the two wealths are averaged. At
+    ``m = 0`` this is the two-sided e-process of the tests themselves.
+
+    With |d| <= scale and |m| <= scale, |x| <= 2, so a bet of at most 1/2 keeps
+    every factor 1 + lambda * x nonnegative: under E[d] = m each wealth is a
+    nonnegative martingale, and so is their average. Vectorized over ``nulls``.
+    """
+    import numpy as np
+
+    grid = np.atleast_1d(np.asarray(nulls, dtype=float))
+    peak = np.zeros_like(grid)
+    # Row 0 bets on x, row 1 on -x; each row is one aGRAPA wealth per null.
+    signs = np.array([[1.0], [-1.0]])
+    sums = np.zeros((2, grid.size))
+    squares = np.zeros((2, grid.size))
+    logs = np.zeros((2, grid.size))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        for t, value in enumerate(values):
+            x = signs * (float(value) - grid) / scale
+            mean = sums / (t + 1)
+            variance = (1.0 + squares) / (t + 1)
+            bet = np.clip(mean / (variance + mean * mean), 0.0, BET_CAP)
+            logs = logs + np.log1p(bet * x)
+            sums = sums + x
+            squares = squares + (x - sums / (t + 2)) ** 2
+            current = np.logaddexp(logs[0], logs[1]) - math.log(2.0)
+            peak = np.maximum(peak, current)
+    return peak
 
 
 def confidence_sequence(
     values: list[float], *, alpha: float = 0.05, bound: float = 1.0
 ) -> ConfidenceSequence:
-    """An anytime-valid interval for the mean of ``values``."""
+    """A betting confidence sequence for the mean of ``values``.
+
+    The interval is the set of means ``m`` that the two-sided aGRAPA e-process
+    has never rejected at level ``alpha``:
+
+        C_n = { m : sup_{t <= n} (K+_t(m) + K-_t(m)) / 2 < 1/alpha }.
+
+    For the true mean, Ville's inequality bounds the probability that the
+    e-process ever reaches 1/alpha by alpha, so C_n contains it at every n at
+    once (Waudby-Smith and Ramdas, 2024). Because C_n is built from running
+    maxima, it is the running intersection of the intervals at each n.
+
+    ``bound`` is the declared range of the values, as in the test; a value
+    outside it is refused rather than clipped. The boundary is located on a
+    grid of step ``bound``/2000 and refined by bisection to about 1e-7.
+
+    Coherence with the test: a one-sided e-value at or above 2k/alpha implies a
+    two-sided e-value of at least k/alpha >= 1/alpha at zero, so a supported
+    hypothesis always has an interval that excludes zero.
+    """
+    import numpy as np
+
     if not 0.0 < alpha < 1.0:
         raise ValueError("alpha must lie in (0, 1)")
     if bound <= 0.0:
@@ -395,19 +464,40 @@ def confidence_sequence(
     n = len(values)
     if n == 0:
         return ConfidenceSequence(mean=0.0, lower=-bound, upper=bound, n=0, alpha=alpha)
-
-    mean = sum(values) / n
-    if n == 1:
-        return ConfidenceSequence(
-            mean=mean, lower=mean - bound, upper=mean + bound, n=1, alpha=alpha
+    if any(abs(v) > bound * (1.0 + 1e-9) for v in values):
+        raise ValueError(
+            f"a value lies outside the declared range ±{bound}; the range is part "
+            "of the plan and is not adjusted to the data"
         )
+    mean = float(sum(values)) / n
+    log_threshold = math.log(1.0 / alpha)
 
-    variance = sum((value - mean) ** 2 for value in values) / (n - 1)
-    log_term = math.log(2.0 * math.log(max(n, 2)) / alpha)
-    # Empirical-Bernstein: the variance term dominates for large n, the range
-    # term for small n. The iterated logarithm is what buys validity at every
-    # n rather than at one.
-    radius = math.sqrt(2.0 * variance * log_term / n) + 3.0 * bound * log_term / n
-    return ConfidenceSequence(
-        mean=mean, lower=mean - radius, upper=mean + radius, n=n, alpha=alpha
+    def inside(points: Any) -> Any:
+        return two_sided_peak_log_wealth(values, points, scale=bound) < log_threshold
+
+    grid = np.linspace(-bound, bound, 4001)
+    kept = inside(grid)
+    if not kept.any():
+        # Cannot happen for alpha < 1 at the sample mean unless the data are
+        # degenerate at a bound; report the point rather than an empty set.
+        return ConfidenceSequence(mean=mean, lower=mean, upper=mean, n=n, alpha=alpha)
+    first, last = int(np.argmax(kept)), int(len(kept) - 1 - np.argmax(kept[::-1]))
+
+    def refine(outside: float, inner: float) -> float:
+        for _ in range(40):
+            middle = 0.5 * (outside + inner)
+            if bool(inside(np.array([middle]))[0]):
+                inner = middle
+            else:
+                outside = middle
+            if abs(inner - outside) < 1e-7:
+                break
+        return inner
+
+    lower = float(grid[first]) if first == 0 else refine(float(grid[first - 1]), float(grid[first]))
+    upper = (
+        float(grid[last])
+        if last == len(grid) - 1
+        else refine(float(grid[last + 1]), float(grid[last]))
     )
+    return ConfidenceSequence(mean=mean, lower=lower, upper=upper, n=n, alpha=alpha)
