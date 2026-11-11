@@ -36,7 +36,7 @@ import numpy as np
 from xai_gov.analysis.posthoc_v2 import load_cells
 
 TEXT_WIDTH_IN = 170.0 / 25.4
-SURFACE = "#fcfcfb"
+SURFACE = "#ffffff"  # MDPI figures sit on a white page; an off-white box shows
 INK = "#0b0b0b"
 INK_2 = "#52514e"
 GRID = "#e6e5e0"
@@ -44,7 +44,7 @@ REFERENCE = "#8a8984"
 DPI = 600
 #: Every label drawn inside a plot sits on a patch of the surface colour, so no
 #: gridline, reference line or curve runs through its text.
-LABEL_BOX = {"facecolor": "#fcfcfb", "edgecolor": "none", "pad": 1.2}
+LABEL_BOX = {"facecolor": "#ffffff", "edgecolor": "none", "pad": 1.2}
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]
 ONE = SERIES[0]
 
@@ -58,6 +58,7 @@ ARM_BASE = {"ungoverned": "no supervision", "governed": "mediator only", "fallba
             "projection": "projection", "backup": "F-backup"}
 ARM_CONTEXT = {"q_": "Q-learning", "five_": "five echelons"}
 NODE_LABELS = {"dc-01": "Distribution center", "plant-01": "Plant", "retail-01": "Retailer"}
+NODE_ORDER = ("retail-01", "dc-01", "plant-01")
 DETECTOR_LABELS = {
     "shielded": "Adaptive (reference)",
     "contaminated": "Warm-up in calibration",
@@ -208,7 +209,9 @@ def fig_epsilon(cells: tuple[Any, ...], out: Path, arm: str = "projection") -> N
         for node, points in (trajectory or {}).items():
             for period, level in points:
                 by_node.setdefault(node, {}).setdefault(int(period), []).append(float(level))
-    nodes = sorted(by_node.items())
+    # Retail first, as in the text and the parameter table, not alphabetical.
+    order = {node: i for i, node in enumerate(NODE_ORDER)}
+    nodes = sorted(by_node.items(), key=lambda item: (order.get(item[0], len(order)), item[0]))
     fig, axes = plt.subplots(1, len(nodes), figsize=(TEXT_WIDTH_IN, 2.3), sharey=True)
     rows = []
     for letter, ax, (node, periods) in zip("abc", np.atleast_1d(axes), nodes, strict=False):
@@ -242,7 +245,8 @@ def fig_envelope(report: dict[str, Any], out: Path) -> None:
                     [e["ci_low"] for e in entries], [e["ci_high"] for e in entries])
         bound = entries[0]["bound"]
         ax.axvline(bound, color=REFERENCE, linewidth=0.8)
-        ax.set_xlim(0, 1)
+        # A small margin keeps a frequency of zero off the axis line.
+        ax.set_xlim(-0.03, 1)
         ax.set_title(f"({letter}) {prop}, bound {bound:g}", loc="left")
         rows += [[a, prop, e["frequency"], e["ci_low"], e["ci_high"], bound, e["verdict"]]
                  for a, e in zip(arms, entries, strict=True)]
@@ -253,7 +257,8 @@ def fig_envelope(report: dict[str, Any], out: Path) -> None:
 
 def fig_sweeps(sweeps: dict[str, Any], out: Path) -> None:
     names = [n for n in ("break_even", "severity") if n in sweeps["sweeps"]]
-    fig, axes = plt.subplots(1, len(names), figsize=(TEXT_WIDTH_IN, 2.4))
+    # One y scale for both panels: they show the same quantity in the same units.
+    fig, axes = plt.subplots(1, len(names), figsize=(TEXT_WIDTH_IN, 2.4), sharey=True)
     axes = np.atleast_1d(axes)
     rows = []
     for letter, ax, name in zip("ab", axes, names, strict=False):
