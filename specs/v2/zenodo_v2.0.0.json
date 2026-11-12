@@ -1,0 +1,23 @@
+{
+  "title": "XAI-Gov study bundle v2.0.0 for Avoiding Inadmissible Defaults in Shielded Constrained POMDPs under Distribution Shift",
+  "upload_type": "dataset",
+  "keywords": [
+    "safe reinforcement learning",
+    "shielding",
+    "constrained POMDP",
+    "supply chain",
+    "fallback policies",
+    "conformal prediction",
+    "distribution shift",
+    "anytime-valid inference"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/rmachuchoc/xai-gov/tree/v2.0.0",
+      "relation": "isSupplementTo",
+      "resource_type": "software",
+      "scheme": "url"
+    }
+  ],
+  "description": "<p>This bundle holds the data behind the manuscript \"Avoiding Inadmissible Defaults in Shielded Constrained POMDPs under Distribution Shift\". Every number, table and figure in the revised article was produced from these files.</p><p><strong>Why there is a version 2</strong></p><p>A reviewer of the first submission reproduced the released code and found two defects in the simulator. The reported service level added up the units served by every node, suppliers included, so supplier shipments counted as customer service and some rates went above one. Backordered material was also lost: a supplier took it out of stock twice and never shipped it to the node that had ordered it. Both defects were confirmed, so the numbers in v1.0.1 and v1.1.0 should not be used. Those versions remain online only as a record of what was submitted.</p><p>The simulator was rebuilt as the standard serial supply chain with backorders, with material conservation checked in every period. The outcome is now the retail fill rate β, the share of customer demand served from stock in the period it arrives. An admissible fallback (F-backup, a base-stock controller clipped to the envelope) joined the comparison. Six confirmatory hypotheses were sealed before the first run, with 500 replicates per arm set by a simulated power analysis and a base seed shared by no earlier campaign. The earlier campaign served only as a pilot.</p><p><strong>What is inside</strong></p><ul><li><code>runs/</code>: 12,400 simulation runs, each with its configuration snapshot, KPIs and a hash-chained decision log that <code>xai-gov verify-log &lt;run&gt;</code> can check. They are the 4,500 runs of the confirmatory campaign (nine arms, 500 seed-paired replicates), 1,000 unsupervised baselines for the economic comparisons, 2,500 runs of the exploratory detector campaign, 1,000 of the exploratory descriptor campaign (which also reuses 500 confirmatory runs), 3,000 from the sweeps over intervention cost and disruption severity, and 400 stationary runs for the detector's false-alarm line.</li><li><code>campaigns/</code>: the campaign reports, one file per cell, the post-hoc analyses (admissibility, governance rates, clipping of the adapted level, economics) and the betting confidence sequences of every hypothesis.</li><li><code>sweeps/</code>, <code>analysis/</code>: the sweep report with paired bootstrap intervals, the detector null line, and the numerical check of the conditions of Theorem A1.</li><li><code>figures/</code>: every figure of the article as a 600 dpi PNG, each next to the CSV it was drawn from.</li><li><code>calibration/</code>: the posterior calibration of the demand process against 30 M5 store-by-category series at weekly cadence, for the i.i.d. and AR(1) processes.</li><li><code>specs/v2/</code>: the sealed plan, the pilot, the power simulation, the parameter table, the worked examples and a dated chronology of the plan. <code>configs/</code> has every configuration needed to rebuild the runs.</li><li><code>PROVENANCE.txt</code> records the repository, tag and commit that produced the data, and <code>SHA256SUMS</code> has a checksum for every file.</li></ul><p><strong>Data not included</strong></p><p>The M5 demand series cannot be redistributed under their licence. They can be regenerated from the original competition files with <code>make m5</code>.</p><p><strong>Code and reproduction</strong></p><p>The code is at https://github.com/rmachuchoc/xai-gov (tag v2.0.0). The README lists the commands in the order the protocol ran them, and CHANGELOG-v2.0.0.md describes the two defects and every change since v1.1.0. All runs are deterministic given their seed.</p>"
+}
