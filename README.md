@@ -60,7 +60,7 @@ Three things the study does **not** claim:
 
 | Tag | Data (Zenodo) | Notes |
 | --- | --- | --- |
-| `v2.0.0` | DOI to be added at release | Current. New engine, β, F-backup, aGRAPA, sealed H1–H6, 4500 confirmatory runs |
+| `v2.0.0` | [10.5281/zenodo.24148686](https://doi.org/10.5281/zenodo.24148686) | Current. New engine, β, F-backup, aGRAPA, sealed H1–H6, 4500 confirmatory runs |
 | `v1.1.0` | [10.5281/zenodo.23484768](https://doi.org/10.5281/zenodo.23484768) | Superseded. Its simulator had the two defects described in `CHANGELOG-v2.0.0.md` |
 | `v1.0.1` | [10.5281/zenodo.23091494](https://doi.org/10.5281/zenodo.23091494) | Superseded |
 
@@ -192,7 +192,7 @@ If you use the code, please cite the archived release:
 
 > Ortiz, D.; Machucho, R.; Hernandez, J.; Garcia, J.; Herrera, H.; Lopez, J.
 > *xai-gov study bundle v2.0.0* [Data set and software]. Zenodo, 2026.
-> DOI to be added at release.
+> https://doi.org/10.5281/zenodo.24148686
 
 ## License
 
