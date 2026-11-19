@@ -28,7 +28,9 @@ def test_scientific_notation_uses_times_ten(project_root: Path) -> None:
     assert sci(240.0) == "240.00"
 
 
-def test_the_power_figure_writes_a_600_dpi_png_and_csv(project_root: Path, tmp_path: Path) -> None:
+def test_the_power_figure_writes_a_1200_dpi_rgb_png_and_csv(
+    project_root: Path, tmp_path: Path
+) -> None:
     module = _module(project_root)
     module.style()
     power = json.loads((project_root / "specs/v2/power_v2.json").read_text(encoding="utf-8"))
@@ -38,7 +40,10 @@ def test_the_power_figure_writes_a_600_dpi_png_and_csv(project_root: Path, tmp_p
     assert not (tmp_path / "fig_v2_power.pdf").exists()
     from PIL import Image
 
-    dpi = Image.open(tmp_path / "fig_v2_power.png").info["dpi"]
-    assert round(dpi[0]) == round(dpi[1]) == 600
+    with Image.open(tmp_path / "fig_v2_power.png") as image:
+        dpi = image.info["dpi"]
+        mode = image.mode
+    assert round(dpi[0]) == round(dpi[1]) == 1200
+    assert mode == "RGB"
     header = (tmp_path / "fig_v2_power.csv").read_text(encoding="utf-8").splitlines()[0]
     assert header == "hypothesis,n,power"

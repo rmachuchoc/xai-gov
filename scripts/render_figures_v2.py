@@ -3,7 +3,7 @@
 
     python scripts/render_figures_v2.py --outputs-root outputs/v2
 
-Writes a PNG at 600 dpi and a CSV table view of every figure to
+Writes an opaque RGB PNG at 1200 dpi and a CSV table view of every figure to
 <outputs-root>/figures/. Nothing is hard-coded: each value is read from the
 campaign reports, the stored cells, the sweeps, the power simulation and the
 null line. The manuscript is not touched.
@@ -41,7 +41,10 @@ INK = "#0b0b0b"
 INK_2 = "#52514e"
 GRID = "#e6e5e0"
 REFERENCE = "#8a8984"
-DPI = 600
+#: MDPI asks for PNG, JPEG or TIFF of at least 600 dpi. These figures are line
+#: art (thin strokes and 7-8 pt text), drawn at their printed width, so 1200 dpi
+#: is the line-art standard that keeps edges sharp when the PDF is zoomed.
+DPI = 1200
 #: Every label drawn inside a plot sits on a patch of the surface colour, so no
 #: gridline, reference line or curve runs through its text.
 LABEL_BOX = {"facecolor": "#ffffff", "edgecolor": "none", "pad": 1.2}
@@ -106,9 +109,26 @@ def style() -> None:
     })
 
 
-def save(fig: Any, directory: Path, name: str, header: list[str], rows: list[list[Any]]) -> None:
-    fig.savefig(directory / f"{name}.png", dpi=DPI, bbox_inches="tight")
+def write_png(fig: Any, path: Path) -> None:
+    """Save at DPI and flatten to opaque RGB on the white surface.
+
+    Matplotlib writes RGBA; an alpha channel adds nothing on a white page and
+    some production pipelines mishandle it, so it is composited away here.
+    """
+    from PIL import Image
+
+    fig.savefig(path, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
+    with Image.open(path) as image:
+        image.load()
+        rgba = image.convert("RGBA")
+    flat = Image.new("RGB", rgba.size, SURFACE)
+    flat.paste(rgba, mask=rgba.getchannel("A"))
+    flat.save(path, dpi=(DPI, DPI), optimize=True)
+
+
+def save(fig: Any, directory: Path, name: str, header: list[str], rows: list[list[Any]]) -> None:
+    write_png(fig, directory / f"{name}.png")
     with (directory / f"{name}.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(header)
@@ -384,8 +404,7 @@ def fig_network(root: Path, out: Path) -> None:
     label((end_x + 16.6) / 2 + 0.15, lower - 0.15, "Demand", "top")
     label(xs[-1] + width / 2, y0 + height + 0.2,
           "Demand volatility enters at the retailer", "bottom")
-    fig.savefig(out / "fig_v2_network.png", dpi=DPI, bbox_inches="tight")
-    plt.close(fig)
+    write_png(fig, out / "fig_v2_network.png")
 
 
 def fig_calibration(root: Path, out: Path) -> None:
@@ -426,8 +445,7 @@ def fig_calibration(root: Path, out: Path) -> None:
     ax.set_xlim(0, 12)
     ax.grid(axis="y", visible=False)
     ax.set_xlabel("Posterior predictive distance on held-out statistics (larger is worse)")
-    fig.savefig(out / "fig_v2_calibration.png", dpi=DPI, bbox_inches="tight")
-    plt.close(fig)
+    write_png(fig, out / "fig_v2_calibration.png")
     with (out / "fig_v2_calibration.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["process", "series", "gap", "overfitted", "identified"])
