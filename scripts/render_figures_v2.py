@@ -295,6 +295,10 @@ def fig_envelope(report: dict[str, Any], out: Path) -> None:
         ax.set_xlim(-0.03, 1)
         ax.spines["left"].set_visible(False)
         ax.tick_params(axis="y", length=0)
+        # The bounds (0.02, 0.05, 0.2) sit next to zero, where a light gridline
+        # beside the dark bound line read as a doubled line; zero keeps its tick.
+        ax.set_xticks([0, 0.25, 0.5, 0.75, 1])
+        ax.get_xgridlines()[0].set_visible(False)
         ax.set_title(f"({letter}) {prop}, bound {bound:g}", loc="left")
         rows += [[a, prop, e["frequency"], e["ci_low"], e["ci_high"], bound, e["verdict"]]
                  for a, e in zip(arms, entries, strict=True)]
