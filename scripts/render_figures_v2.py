@@ -87,10 +87,14 @@ def arm_label(arm: str) -> str:
 
 
 def contrast_label(hypothesis: dict[str, Any]) -> str:
-    """'projection vs. F-null (Q-learning)', with the context said once."""
+    """'projection − F-null (Q-learning)': treatment minus control, context once.
+
+    The minus sign says which arm is subtracted from which, so the sign of the
+    plotted difference reads off the label instead of only off the caption.
+    """
     treatment, context = _split_arm(hypothesis["treatment"])
     control, _ = _split_arm(hypothesis["control"])
-    text = f"{ARM_BASE.get(treatment, treatment)} vs. {ARM_BASE.get(control, control)}"
+    text = f"{ARM_BASE.get(treatment, treatment)} − {ARM_BASE.get(control, control)}"
     if hypothesis.get("indicator", "").endswith("after_startup"):
         context = "after start-up"
     if context:
@@ -209,19 +213,32 @@ def fig_evidence(report: dict[str, Any], sequences: dict[str, dict[str, Any]],
         rows.append([h["id"], f"{h['treatment']} − {h['control']}", h["direction"],
                      round(h["mean_difference"], 4), round(cs["lower"], 4),
                      round(cs["upper"], 4), h["evidence"]["forward_e_value"], h["verdict"]])
-    fig, ax = plt.subplots(figsize=(TEXT_WIDTH_IN * 0.75, 2.6))
+    threshold = float(report["hypotheses"][0]["evidence"]["familywise_threshold"])
+    fig, ax = plt.subplots(figsize=(TEXT_WIDTH_IN * 0.60, 2.7))
     labels = [f"{h['id']}  {contrast_label(h)}" for h in report["hypotheses"]]
     dot_whisker(ax, labels, [r[3] for r in rows], [r[4] for r in rows], [r[5] for r in rows])
     ax.axvline(0, color=REFERENCE, linewidth=0.8)
-    for i, r in enumerate(rows[::-1]):
-        ax.annotate(f"e = {sci(r[6])}", (max(r[5], 0.0), i), xytext=(6, 0),
-                    textcoords="offset points", va="center", fontsize=7, color=INK_2,
-                    bbox=LABEL_BOX, zorder=4)
-    ax.set_xlim(-0.9, 1.05)
-    # As in the fill-rate figure: labelled values, so no vertical gridlines for
-    # the label patches to break; the zero line stays as the reference.
+    # Differences of a rate lie in [-1, 1]: a symmetric axis centred on zero
+    # gives neither sign more room than the other.
+    ax.set_xlim(-1, 1)
+    ax.set_xticks([-1, -0.5, 0, 0.5, 1], ["−1.0", "−0.5", "0", "0.5", "1.0"])
     ax.grid(axis="x", visible=False)
-    ax.set_xlabel("Paired difference in β (mean and 95% confidence sequence)")
+    # Which side means what, said on the axis itself rather than only in the caption.
+    top = len(rows) - 0.4
+    ax.set_ylim(-0.6, top + 0.55)
+    ax.text(-0.04, top + 0.2, "← control higher", ha="right", va="center", fontsize=7,
+            color=INK_2)
+    ax.text(0.04, top + 0.2, "treatment higher →", ha="left", va="center", fontsize=7,
+            color=INK_2)
+    # E-values in their own column outside the plot: their size is evidence, not
+    # effect, so they must not sit where a position on the axis could be read.
+    column = ("axes fraction", "data")
+    ax.annotate(f"E-value (≥ {threshold:g} supports)", (1.04, top + 0.2), xycoords=column,
+                ha="left", va="center", fontsize=7, color=INK_2, annotation_clip=False)
+    for i, r in enumerate(rows[::-1]):
+        ax.annotate(sci(r[6]), (1.04, i), xycoords=column, ha="left", va="center",
+                    fontsize=7, color=INK_2, annotation_clip=False)
+    ax.set_xlabel("Paired difference in β, treatment − control (mean and 95% confidence sequence)")
     save(fig, out, "fig_v2_evidence", ["hypothesis", "comparison", "direction",
                                          "mean_difference", "cs_low", "cs_high", "e_value",
                                          "verdict"], rows)
