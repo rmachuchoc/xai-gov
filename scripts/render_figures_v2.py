@@ -113,6 +113,44 @@ def style() -> None:
     })
 
 
+def hide_intervals_inside_markers(fig: Any) -> None:
+    """Drop the whisker and caps of any interval no wider than its dot.
+
+    Such caps would fall on the dot or touch its edge; the dot alone then stands
+    for the interval, as the captions state. Measured in display units after layout,
+    so it holds whatever the axis scale.
+    """
+    from matplotlib.container import ErrorbarContainer
+
+    fig.canvas.draw()
+    for ax in fig.axes:
+        for container in ax.containers:
+            if not isinstance(container, ErrorbarContainer):
+                continue
+            dots, caps, bars = container.lines
+            if dots is None or not caps:
+                continue
+            # A cap is drawn only if the inner edge of its stroke (half its width)
+            # clears the disc; anything closer would touch the dot.
+            radius = (dots.get_markersize() + dots.get_markeredgewidth()) * fig.dpi / 72 / 2
+            radius += caps[0].get_markeredgewidth() * fig.dpi / 72 / 2
+            centre = dots.get_transform().transform(dots.get_xydata())
+            axis = 0 if container.has_xerr else 1
+            ends = [cap.get_transform().transform(cap.get_xydata()) for cap in caps]
+            hidden = np.max([np.abs(e[:, axis] - centre[:, axis]) for e in ends], axis=0) < radius
+            if not hidden.any():
+                continue
+            for cap in caps:
+                xs, ys = (np.asarray(v, dtype=float).copy() for v in cap.get_data())
+                xs[hidden] = np.nan
+                ys[hidden] = np.nan
+                cap.set_data(xs, ys)
+            for collection in bars:
+                segments = collection.get_segments()
+                collection.set_segments([seg for seg, h in zip(segments, hidden, strict=True)
+                                         if not h])
+
+
 def write_png(fig: Any, path: Path) -> None:
     """Save at DPI and flatten to opaque RGB on the white surface.
 
@@ -121,6 +159,7 @@ def write_png(fig: Any, path: Path) -> None:
     """
     from PIL import Image
 
+    hide_intervals_inside_markers(fig)
     fig.savefig(path, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     with Image.open(path) as image:
@@ -156,13 +195,29 @@ def mean_ci(values: list[float]) -> tuple[float, float, float]:
     return mean, mean - half, mean + half
 
 
+def interval(ax: Any, xs: Any, ys: Any, lows: list[float], highs: list[float], *,
+             horizontal: bool, dot: float = 2.6) -> None:
+    """Mean and interval as a capped whisker: |–●–|.
+
+    An interval only a little wider than the dot used to leave two slivers that
+    a PDF viewer smooths into what looks like a half-drawn bar. End caps taller
+    than the dot mark where every interval stops, however short it is. No white
+    ring around the dot: a ring cuts the whisker.
+    """
+    centres = np.asarray(xs if horizontal else ys, dtype=float)
+    err = [centres - np.asarray(lows, dtype=float), np.asarray(highs, dtype=float) - centres]
+    ax.errorbar(xs, ys, xerr=err if horizontal else None, yerr=None if horizontal else err,
+                fmt="o", color=ONE, ecolor=ONE, markersize=dot, markeredgecolor=ONE,
+                elinewidth=1.1, capsize=2.5, capthick=1.1, zorder=3)
+    # errorbar() ties the marker edge width to capthick, so mew=0 would also
+    # erase the caps; the edge is therefore the dot's own colour, and the 2.6 pt
+    # dot plus its 1.1 pt edge draw a 3.7 pt disc.
+
+
 def dot_whisker(ax: Any, labels: list[str], means: list[float], lows: list[float],
-                highs: list[float]) -> None:
+                highs: list[float], dot: float = 2.6) -> None:
     y = np.arange(len(labels))[::-1]
-    # No white ring around the dot: a ring cuts the whisker, and an interval only a
-    # little wider than the dot then shows as two detached stubs.
-    ax.hlines(y, lows, highs, color=ONE, linewidth=1.6, capstyle="butt")
-    ax.plot(means, y, "o", color=ONE, markersize=4.5, markeredgewidth=0, zorder=3)
+    interval(ax, means, y, lows, highs, horizontal=True, dot=dot)
     ax.set_yticks(y, labels)
     ax.grid(axis="y", visible=False)
 
@@ -285,19 +340,22 @@ def fig_envelope(report: dict[str, Any], out: Path) -> None:
     rows = []
     for letter, ax, prop in zip("abc", axes, properties, strict=False):
         entries = [envelope[a]["properties"][prop] for a in arms]
+        # A smaller dot (1.9 pt + 1.1 pt edge) on a 0-0.72 axis: the Clopper-Pearson
+        # intervals near the bounds, which the text compares with them, then show
+        # instead of hiding behind the dot.
         dot_whisker(ax, [arm_label(a) for a in arms], [e["frequency"] for e in entries],
-                    [e["ci_low"] for e in entries], [e["ci_high"] for e in entries])
+                    [e["ci_low"] for e in entries], [e["ci_high"] for e in entries], dot=1.9)
         bound = entries[0]["bound"]
         ax.axvline(bound, color=REFERENCE, linewidth=0.8)
         # A small margin keeps a frequency of zero off the axis line. The spine
         # would then run just beside the zero gridline as a doubled line, so it is
         # hidden and the zero gridline serves as the axis.
-        ax.set_xlim(-0.03, 1)
+        ax.set_xlim(-0.03, 0.72)
         ax.spines["left"].set_visible(False)
         ax.tick_params(axis="y", length=0)
         # The bounds (0.02, 0.05, 0.2) sit next to zero, where a light gridline
         # beside the dark bound line read as a doubled line; zero keeps its tick.
-        ax.set_xticks([0, 0.25, 0.5, 0.75, 1])
+        ax.set_xticks([0, 0.2, 0.4, 0.6])
         ax.get_xgridlines()[0].set_visible(False)
         ax.set_title(f"({letter}) {prop}, bound {bound:g}", loc="left")
         rows += [[a, prop, e["frequency"], e["ci_low"], e["ci_high"], bound, e["verdict"]]
@@ -320,8 +378,7 @@ def fig_sweeps(sweeps: dict[str, Any], out: Path) -> None:
         means = [lv["difference"] for lv in levels]
         lows = [lv["ci95"][0] for lv in levels]
         highs = [lv["ci95"][1] for lv in levels]
-        ax.vlines(x, lows, highs, color=ONE, linewidth=1.6, capstyle="butt")
-        ax.plot(x, means, "o", color=ONE, markersize=4.5, markeredgewidth=0, zorder=3)
+        interval(ax, x, means, lows, highs, horizontal=False)
         ax.axhline(0, color=REFERENCE, linewidth=0.8)
         ticks = [lv["label"].split("=")[-1] for lv in levels]
         ax.set_xticks(x, [t[0].upper() + t[1:] for t in ticks])
