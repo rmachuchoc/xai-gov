@@ -348,13 +348,20 @@ def fig_power(power: dict[str, Any], out: Path, sealed_n: int) -> None:
         rows += [[h["hypothesis"], n, p] for n, p in zip(n_values, worst, strict=True)]
     ax.axhline(0.80, color=REFERENCE, linewidth=0.8)
     ax.axvline(sealed_n, color=REFERENCE, linewidth=0.8)
-    ax.annotate(f"Sealed n = {sealed_n}", (sealed_n, 0.06), xytext=(5, 0),
+    ax.annotate(f"Sealed n = {sealed_n}", (sealed_n, 0.10), xytext=(5, 0),
                 textcoords="offset points", fontsize=7, color=INK_2, va="center",
                 bbox=LABEL_BOX, zorder=4)
     ax.annotate("Power 0.80", (10, 0.80), xytext=(0, 6), textcoords="offset points",
                 fontsize=7, color=INK_2, va="bottom", bbox=LABEL_BOX, zorder=4)
     ax.set_xlim(0, 700)
-    ax.set_ylim(0, 1.02)
+    # Power sits at exactly 0 before the curves rise and at 1 after: a margin on
+    # both sides keeps those plateaus off the axis line and the top edge, and the
+    # gridlines at 0 and 1 are hidden so no curve runs along one.
+    ax.set_ylim(-0.04, 1.04)
+    ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    for value, line in zip(ax.get_yticks(), ax.get_ygridlines(), strict=True):
+        if value in (0.0, 1.0):
+            line.set_visible(False)
     # The two reference labels sit across vertical gridlines, whose label patches
     # would break them; the sealed-n line and the horizontal grid carry the reading.
     ax.grid(axis="x", visible=False)
