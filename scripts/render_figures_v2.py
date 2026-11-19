@@ -155,9 +155,10 @@ def mean_ci(values: list[float]) -> tuple[float, float, float]:
 def dot_whisker(ax: Any, labels: list[str], means: list[float], lows: list[float],
                 highs: list[float]) -> None:
     y = np.arange(len(labels))[::-1]
-    ax.hlines(y, lows, highs, color=ONE, linewidth=1.6)
-    ax.plot(means, y, "o", color=ONE, markersize=4.5, markeredgecolor=SURFACE,
-            markeredgewidth=1.0, zorder=3)
+    # No white ring around the dot: a ring cuts the whisker, and an interval only a
+    # little wider than the dot then shows as two detached stubs.
+    ax.hlines(y, lows, highs, color=ONE, linewidth=1.6, capstyle="butt")
+    ax.plot(means, y, "o", color=ONE, markersize=4.5, markeredgewidth=0, zorder=3)
     ax.set_yticks(y, labels)
     ax.grid(axis="y", visible=False)
 
@@ -179,6 +180,9 @@ def fig_beta(cells: tuple[Any, ...], out: Path) -> None:
         ax.annotate(f"{r[2]:.3f}", (r[4], i), xytext=(5, 0), textcoords="offset points",
                     va="center", fontsize=7, color=INK_2, bbox=LABEL_BOX, zorder=4)
     ax.set_xlim(0, 1)
+    # Every value is printed beside its dot, so vertical gridlines add nothing and
+    # the white patches behind the labels would only leave them broken.
+    ax.grid(axis="x", visible=False)
     ax.set_xlabel("Fill rate β at the retailer (mean and 95% CI)")
     save(fig, out, "fig_v2_beta_by_arm", ["arm", "runs", "mean", "ci_low", "ci_high"], rows)
 
@@ -214,6 +218,9 @@ def fig_evidence(report: dict[str, Any], sequences: dict[str, dict[str, Any]],
                     textcoords="offset points", va="center", fontsize=7, color=INK_2,
                     bbox=LABEL_BOX, zorder=4)
     ax.set_xlim(-0.9, 1.05)
+    # As in the fill-rate figure: labelled values, so no vertical gridlines for
+    # the label patches to break; the zero line stays as the reference.
+    ax.grid(axis="x", visible=False)
     ax.set_xlabel("Paired difference in β (mean and 95% confidence sequence)")
     save(fig, out, "fig_v2_evidence", ["hypothesis", "comparison", "direction",
                                          "mean_difference", "cs_low", "cs_high", "e_value",
@@ -265,8 +272,12 @@ def fig_envelope(report: dict[str, Any], out: Path) -> None:
                     [e["ci_low"] for e in entries], [e["ci_high"] for e in entries])
         bound = entries[0]["bound"]
         ax.axvline(bound, color=REFERENCE, linewidth=0.8)
-        # A small margin keeps a frequency of zero off the axis line.
+        # A small margin keeps a frequency of zero off the axis line. The spine
+        # would then run just beside the zero gridline as a doubled line, so it is
+        # hidden and the zero gridline serves as the axis.
         ax.set_xlim(-0.03, 1)
+        ax.spines["left"].set_visible(False)
+        ax.tick_params(axis="y", length=0)
         ax.set_title(f"({letter}) {prop}, bound {bound:g}", loc="left")
         rows += [[a, prop, e["frequency"], e["ci_low"], e["ci_high"], bound, e["verdict"]]
                  for a, e in zip(arms, entries, strict=True)]
@@ -288,9 +299,8 @@ def fig_sweeps(sweeps: dict[str, Any], out: Path) -> None:
         means = [lv["difference"] for lv in levels]
         lows = [lv["ci95"][0] for lv in levels]
         highs = [lv["ci95"][1] for lv in levels]
-        ax.vlines(x, lows, highs, color=ONE, linewidth=1.6)
-        ax.plot(x, means, "o", color=ONE, markersize=4.5, markeredgecolor=SURFACE,
-                markeredgewidth=1.0, zorder=3)
+        ax.vlines(x, lows, highs, color=ONE, linewidth=1.6, capstyle="butt")
+        ax.plot(x, means, "o", color=ONE, markersize=4.5, markeredgewidth=0, zorder=3)
         ax.axhline(0, color=REFERENCE, linewidth=0.8)
         ticks = [lv["label"].split("=")[-1] for lv in levels]
         ax.set_xticks(x, [t[0].upper() + t[1:] for t in ticks])
@@ -324,6 +334,9 @@ def fig_power(power: dict[str, Any], out: Path, sealed_n: int) -> None:
                 fontsize=7, color=INK_2, va="bottom", bbox=LABEL_BOX, zorder=4)
     ax.set_xlim(0, 700)
     ax.set_ylim(0, 1.02)
+    # The two reference labels sit across vertical gridlines, whose label patches
+    # would break them; the sealed-n line and the horizontal grid carry the reading.
+    ax.grid(axis="x", visible=False)
     ax.set_xlabel("Replicates n")
     ax.set_ylabel("Simulated power")
     ax.legend(frameon=False, loc="center left", bbox_to_anchor=(1.01, 0.5), ncol=1)
@@ -371,9 +384,22 @@ def fig_network(root: Path, out: Path) -> None:
         ax.text(x, y, text, ha="center", va=va, fontsize=7, color=INK_2, linespacing=1.3)
 
     def arrow(x0: float, y: float, x1: float, *, dashed: bool, color: str) -> None:
-        ax.add_patch(FancyArrowPatch((x0, y), (x1, y), arrowstyle="-|>", mutation_scale=9,
-                                     linewidth=1.3, color=color,
-                                     linestyle=(0, (4, 3)) if dashed else "-"))
+        if not dashed:
+            ax.add_patch(FancyArrowPatch((x0, y), (x1, y), arrowstyle="-|>",
+                                         mutation_scale=9, linewidth=1.3, color=color))
+            return
+        # A dash pattern applied to the whole patch also strokes the head's outline
+        # and lets the last dash collide with it, so the head looks bitten. The
+        # shaft is drawn dashed up to a short solid stub that carries the head.
+        stub = 0.28 if x1 > x0 else -0.28
+        # 0.07 data units is the 2 pt that FancyArrowPatch leaves at a solid
+        # arrow's tail, so dashed and solid arrows clear the boxes equally.
+        lead = 0.07 if x1 > x0 else -0.07
+        ax.plot([x0 + lead, x1 - stub], [y, y], color=color, linewidth=1.3,
+                linestyle=(0, (4, 3)), solid_capstyle="butt", dash_capstyle="butt")
+        ax.add_patch(FancyArrowPatch((x1 - stub, y), (x1, y), arrowstyle="-|>",
+                                     mutation_scale=9, linewidth=1.3, color=color,
+                                     shrinkA=0))
 
     for x, node in zip(xs, nodes, strict=True):
         ax.add_patch(FancyBboxPatch((x, y0), width, height,
