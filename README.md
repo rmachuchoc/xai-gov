@@ -1,7 +1,8 @@
 # xai-gov
 
 Code and study pipeline for the paper **"Avoiding Inadmissible Defaults in
-Shielded Constrained POMDPs under Distribution Shift"** (under revision at
+Shielded Constrained Partially Observable Markov Decision Processes under
+Distribution Shift"** (under revision at
 *Machine Learning and Knowledge Extraction*, MDPI; manuscript make-4658289).
 
 The question the code answers is narrow. When a shield blocks an unsafe action,
@@ -60,12 +61,14 @@ Three things the study does **not** claim:
 
 | Tag | Data (Zenodo) | Notes |
 | --- | --- | --- |
-| `v2.0.0` | [10.5281/zenodo.24148686](https://doi.org/10.5281/zenodo.24148686) | Current. New engine, β, F-backup, aGRAPA, sealed H1–H6, 4500 confirmatory runs |
+| `v2.0.1` | To be added at publication | Current. Data of v2.0.0 with the figures of the revised manuscript (1200 dpi, capped intervals) |
+| `v2.0.0` | [10.5281/zenodo.24148686](https://doi.org/10.5281/zenodo.24148686) | Same data. New engine, β, F-backup, aGRAPA, sealed H1–H6, 4500 confirmatory runs |
 | `v1.1.0` | [10.5281/zenodo.23484768](https://doi.org/10.5281/zenodo.23484768) | Superseded. Its simulator had the two defects described in `CHANGELOG-v2.0.0.md` |
 | `v1.0.1` | [10.5281/zenodo.23091494](https://doi.org/10.5281/zenodo.23091494) | Superseded |
 
 Each tag points to the exact commit that produced its data, and the Zenodo
-bundle records that commit in `PROVENANCE.txt`.
+bundle records that commit in `PROVENANCE.txt`. The runs of v2.0.1 come from
+the v2.0.0 engine, and its figures from the v2.0.1 figure script.
 
 **Do not use the numbers of v1.x.** A reviewer found that the v1 engine
 counted supplier shipments as customer service (rates above one) and lost
